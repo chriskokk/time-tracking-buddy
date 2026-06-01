@@ -1,0 +1,61 @@
+/* Shared structural styles. Per-avatar art/animation lives in
+   avatars/<name>/<name>.css, scoped under the avatar's root class. */
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  pointer-events: none;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Container fills the (settings-sized) window; the avatar SVG scales to it via
+   viewBox. pointer-events:none here so only #creature (the painted creature)
+   captures the mouse, making clicks fall through the transparent gaps. */
+.sprite {
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  cursor: grab;
+}
+.sprite:active {
+  cursor: grabbing;
+}
+
+/* The injected avatar SVG root carries class "avatar <name> <state>". */
+.avatar {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+/* Every avatar wraps its body in #creature: the single interactive surface and
+   the bob/breathe pivot (bottom-center). */
+#creature {
+  pointer-events: auto;
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+
+/* Hover feedback: a glow (filter, so it never fights the transform animations). */
+.sprite.hot .avatar {
+  filter: drop-shadow(0 0 7px rgba(143, 214, 255, 0.85));
+}
+
+/* Shared props (snore z's, alert "!", reading glasses + notepad) hidden by
+   default; each avatar reveals them in its sleeping/alert/reading states. */
+#zzz,
+#bang,
+#glasses,
+#notepad {
+  display: none;
+}

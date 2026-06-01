@@ -1,0 +1,296 @@
+:root {
+  --bg: #f4f6fa;
+  --card: #ffffff;
+  --border: #d3dae6;
+  /* Hairline used for row dividers inside a card (lighter than --border). */
+  --divider: #eef1f6;
+  --text: #1d2733;
+  --muted: #5c6b7e;
+  --accent: #2a7fd4;
+  /* Soft accent tint for hover/selected backgrounds. */
+  --accent-soft: #eaf3fc;
+  --danger: #d9534f;
+  /* Amber, reserved for genuine warnings (e.g. "Ollama not running"). */
+  --warn: #9a6700;
+  /* Uniform width for the right-side control column (inputs + dropdowns). */
+  --control-w: 180px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+}
+
+/* Column layout: the section list scrolls, the footer is pinned (sticky footer
+   pattern — footer is a sibling of the scroll area, not its last child). */
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 20px;
+}
+
+/* Off-screen icon geometry; sized/colored where <use>d (.sec-ico). */
+.icon-sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.group {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 2px rgba(29, 39, 51, 0.04);
+}
+.group h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.4px;
+}
+.sec-ico {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.85;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+}
+.field > span {
+  color: var(--muted);
+  flex: 1;
+}
+.field.column {
+  flex-direction: column;
+  align-items: stretch;
+}
+.field.column > span {
+  margin-bottom: 6px;
+}
+
+/* Subtle row dividers between consecutive controls so related rows read as a
+   group without heavy lines. */
+.group > .field + .field,
+.group > .field + .checkbox,
+.group > .checkbox + .field,
+.group > .checkbox + .checkbox {
+  border-top: 1px solid var(--divider);
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  outline: none;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+/* Uniform control width so inputs and dropdowns line up on the right edge. */
+input[type='text'],
+input[type='number'],
+.field select {
+  width: var(--control-w);
+}
+input[type='text'],
+input[type='number'] {
+  text-align: right;
+}
+input:hover,
+textarea:hover,
+select:hover {
+  border-color: #b9c4d4;
+}
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(42, 127, 212, 0.15);
+}
+textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  text-align: left;
+}
+/* Invalid input: red border, last valid value stays in effect (we just don't persist). */
+input.invalid,
+textarea.invalid {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(217, 83, 79, 0.15);
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.checkbox input {
+  width: auto;
+}
+input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* Avatar selector — wrapping grid of live-SVG thumbnails. 2 columns so the
+   four avatars show as a compact 2×2 (and a 5th would still fit without
+   blowing out the section width). Thumbnails shrunk so the whole section
+   stays vertically compact too. */
+.avatars {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.avatar-thumb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 4px 4px;
+  background: #fff;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.avatar-thumb:hover {
+  border-color: var(--accent);
+}
+.avatar-thumb.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 2px rgba(42, 127, 212, 0.2);
+}
+.avatar-thumb-svg {
+  width: 56px;
+  height: 56px;
+}
+.avatar-thumb-svg svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.avatar-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+.avatar-thumb.selected .avatar-label {
+  color: var(--text);
+  font-weight: 600;
+}
+/* Base rules the avatar CSS expects (normally in the companion stylesheet),
+   scoped to the thumbnails so they don't leak elsewhere. */
+.avatar-thumb-svg #creature {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+.avatar-thumb-svg #zzz,
+.avatar-thumb-svg #bang {
+  display: none;
+}
+
+/* Informational note under a field — calm grey, NOT an error. */
+.hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 2px 0 0;
+  line-height: 1.45;
+}
+/* Genuine warning (e.g. a provider isn't available) — amber, never red. */
+.hint.warn {
+  color: var(--warn);
+}
+/* Neutral explanatory text below a field (e.g. retention helper). */
+.helper {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 4px 0 2px;
+  line-height: 1.45;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  padding: 7px 14px;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+button:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+button.secondary {
+  color: var(--accent);
+}
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+button.primary:hover {
+  background: #2670bd;
+  border-color: #2670bd;
+}
+button.danger {
+  color: var(--danger);
+  border-color: #e7b6b4;
+}
+button.danger:hover {
+  border-color: var(--danger);
+  background: #fdeeed;
+  color: var(--danger);
+}
+
+.footer {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+}

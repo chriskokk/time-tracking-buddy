@@ -1,0 +1,64 @@
+appId: com.kokkinas.timetrackingbuddy
+productName: "Time-Tracking Buddy"
+copyright: Copyright © 2026 Christos Kokkinas
+
+directories:
+  output: dist
+  buildResources: build
+
+# What goes into the asar (the rest of the repo is excluded by default).
+# Source files (src/) are intentionally NOT shipped — only the vite-bundled
+# output in out/.
+files:
+  - out/**
+  - package.json
+  - "!**/*.{md,ts,map,tsbuildinfo}"
+  - "!{tsconfig*.json,electron.vite.config.ts}"
+
+# active-win ships a prebuilt .node binary (N-API, ABI-stable). It must live
+# outside the asar so dlopen can find it at runtime. node:sqlite is built into
+# Electron itself, no native module to unpack.
+asarUnpack:
+  - "**/*.node"
+  - "**/active-win/**"
+
+win:
+  target: nsis
+  icon: build/icon.png
+  artifactName: "${productName} Setup ${version}.${ext}"
+  # signAndEditExecutable defaults to true. With Developer Mode enabled on
+  # the build host, electron-builder's winCodeSign cache can extract the
+  # macOS symlinks it needs, so rcedit succeeds and the Musko icon is
+  # embedded into Time-Tracking Buddy.exe (installer, Start Menu, Taskbar,
+  # and the unpacked .exe inside %LOCALAPPDATA% all show the custom icon).
+
+nsis:
+  oneClick: false
+  perMachine: false # per-user install — no admin rights needed
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: "Time-Tracking Buddy"
+
+# macOS config. EXPERIMENTAL: built via the macOS GitHub Actions runner (see
+# .github/workflows/build.yml) but not yet verified on real Apple hardware.
+# The build is UNSIGNED by default — see the signing notes below.
+mac:
+  target: dmg
+  icon: build/icon.png
+  category: public.app-category.productivity
+  artifactName: "${productName}-${version}.${ext}"
+  # Hardened runtime + entitlements are required for (future) notarization and,
+  # critically, to let the hardened app load active-win's native binary
+  # (disable-library-validation). These are no-ops on an UNSIGNED build —
+  # electron-builder skips codesign entirely when no Developer ID is configured.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # --- Signing / notarization: OFF by default ---
+  # The DMG is unsigned and NOT notarized unless an Apple Developer ID is set.
+  # To enable: provide the Apple secrets to the workflow (CSC_LINK,
+  # CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID),
+  # set CSC_IDENTITY_AUTO_DISCOVERY: true in build.yml, and flip this to true.
+  notarize: false

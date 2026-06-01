@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws:;"
+    />
+    <title>Review a day</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="picker">
+      <label class="row">
+        <span>Date</span>
+        <input id="date" type="date" />
+      </label>
+      <div class="actions">
+        <button id="cancel" class="ghost">Cancel</button>
+        <button id="open" class="primary">Open review</button>
+      </div>
+    </main>
+    <script type="module" src="./picker.ts"></script>
+  </body>
+</html>

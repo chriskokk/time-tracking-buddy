@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws:;"
+    />
+    <title>Companion Settings</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <!-- Monochrome icon sprite: geometry only; size + color come from CSS
+         (.sec-ico { stroke: currentColor }) so each icon inherits its section
+         header's accent color. -->
+    <svg class="icon-sprite" aria-hidden="true">
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></symbol>
+      <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></symbol>
+      <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5" /><path d="M4 12c0 1.6 3.6 3 8 3s8-1.4 8-3" /></symbol>
+      <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5Z" /></symbol>
+      <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2" /><rect x="3" y="13" width="18" height="7" rx="2" /><path d="M7 7.5h.01M7 16.5h.01" /></symbol>
+      <symbol id="i-speaker" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Z" /><path d="M16 8a5 5 0 0 1 0 8" /></symbol>
+      <symbol id="i-face" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M9 10h.01M15 10h.01M8.5 14.5a4 4 0 0 0 7 0" /></symbol>
+      <symbol id="i-window" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18" /></symbol>
+      <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 4v8" /><path d="M7 7a8 8 0 1 0 10 0" /></symbol>
+    </svg>
+    <main class="settings">
+      <section class="group">
+        <h2><svg class="sec-ico"><use href="#i-clock" /></svg>Work hours</h2>
+        <label class="field">
+          <span>Start</span>
+          <input id="workStartHour" type="text" maxlength="5" placeholder="09:00" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span>Close</span>
+          <input id="workCloseHour" type="text" maxlength="5" placeholder="17:30" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span>Pre-close alert (minutes)</span>
+          <input id="preCloseAlertMinutes" type="number" min="0" max="240" step="1" />
+        </label>
+      </section>
+
+      <section class="group">
+        <h2><svg class="sec-ico"><use href="#i-calendar" /></svg>Schedule</h2>
+        <label class="checkbox">
+          <input id="trackWeekends" type="checkbox" />
+          <span>Track on weekends (Saturday &amp; Sunday)</span>
+        </label>
+        <label class="field column">
+          <span>Excluded dates (one YYYY-MM-DD per line; e.g. bank holidays)</span>
+          <textarea id="excludedDates" rows="4" spellcheck="false" autocomplete="off" placeholder="2026-12-25"></textarea>
+        </label>
+        <div class="hint">
+          On a non-tracking day the companion sleeps, capture is paused, and no alert or review fires. Use the tray's "Track today anyway" to override for today.
+        </div>
+      </section>
+
+      <section class="group">
+        <h2><svg class="sec-ico"><use href="#i-eye" /></svg>Capture</h2>
+        <label class="field">
+          <span>Poll interval (seconds)</span>
+          <input id="captureIntervalSeconds" type="number" min="5" max="3600" step="1" />
+        </label>
+        <label class="checkbox">
+          <input id="idleDetectionEnabled" type="checkbox" />
+          <span>Pause when idle</span>
+        </label>
+        <label class="field">
+          <span>Idle threshold (minutes)</span>
+          <input id="idleThresholdMinutes" type="number" min="1" max="240" step="1" />
+        </label>
+        <label class="field column">
+          <span>Excluded apps (one regex per line, matched against app name and window title)</span>
+          <textarea id="excludedAppsRegex" rows="6" spellcheck="false" autocomplete="off"></textarea>
+        </label>
+      </section>
+
+      <section class="group">
+        <h2><svg class="sec-ico"><use href="#i-database" /></svg>Data</h2>
+        <label class="field">
+          <span>Activity data retention (days)</span>
+          <input id="activityRetentionDays" type="number" min="0" max="3650" step="1" />
+        </label>
+        <div class="helper" id="retentionHint">
+          Raw activity capture older than this is deleted. Your logged time entries and reflections are kept permanently. Set to 0 to keep everything.
+        </div>
+        <div class="field">
+          <span>Backup database</span>
+          <button id="backupNow" class="secondary">Backup now…</button>
+        </div>
+        <div class="helper">
+          A daily backup is also written automatically to <code>userData/backups/</code>. Last 7 are kept.
+        </div>
+      </section>
+
+      <section class="group">
+        <h2><svg class="sec-ico"><use href="#i-sparkle" /></svg>AI Provider</h2>
+        <label class="field">
+          <span>Provider</span>
+          <select id="aiProvider">
+            <option value="ollama" id="opt-ollama">Ollama (local)</option>
+            <option value="claude-code" id="opt-claude">Claude Code CLI</option>
+            <option value="none" id="opt-none">No AI (group by activity)</option>
+          </select>
+        </label>
+        <div class="field">
+          <span>Availability</span>
+          <button id="aiRecheck" class="secondary">Re-check</button>
+        </div>
+        <div class="hint" id="aiHint"></div>
+        <label class="field" id="field-claudeModel">
+          <span>Claude model</span>
+          <select id="claudeCodeModel">
+            <option value="haiku">Haiku (faster)</option>
+            <option value="sonnet">Sonnet</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="group" id="section-ollama">
+        <h2><svg class="sec-ico"><use href="#i-server" /></svg>Ollama</h2>
+        <label class="field">
+          <span>Host URL</span>
+          <input id="ollamaHost" type="text" placeholder="http://localhost:11434" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span>Model</span>
+          <input id="ollamaModel" type="text" placeholder="gemma4:e4b" autocomplete="off" />
+        </label>
+      </section>
+
+      <section class="group">
+        <h2><svg class="sec-ico"><use href="#i-speaker" /></svg>Voice &amp; Notifications</h2>
+        <label class="checkbox">
+          <input id="osNotificationEnabled" type="checkbox" />
+          <span>Show desktop notification at alert and when the review opens</span>
+        </label>
+        <label class="checkbox">
+          <input id="voiceEnabled" type="checkbox" />
+          <span>Speak a phrase when entering the alert state</span>
+        </label>
+        <label class="field" id="field-voiceName">
+          <span>Voice</span>
+          <select id="voiceName"></select>
+        </label>
+        <div class="hint" id="voiceHint"></div>
+        <label class="field column">
+          <span>Phrase</span>
+          <input id="voicePhrase" type="text" maxlength="120" autocomplete="off" />
+        </label>
+        <button id="testVoice" class="secondary">Test voice</button>
+      </section>
+
+      <section class="group">
+        <h2><svg class="sec-ico"><use href="#i-face" /></svg>Avatar</h2>
+        <div class="avatars" id="avatars"></div>
+      </section>
+
+      <section class="group">
+        <h2><svg class="sec-ico"><use href="#i-window" /></svg>Companion</h2>
+        <label class="field">
+          <span>Width (px)</span>
+          <input id="companionWidth" type="number" min="50" max="1000" step="1" />
+        </label>
+        <label class="field">
+          <span>Height (px)</span>
+          <input id="companionHeight" type="number" min="50" max="1000" step="1" />
+        </label>
+        <button id="resetPosition" class="secondary">Reset to default position</button>
+      </section>
+
+      <section class="group">
+        <h2><svg class="sec-ico"><use href="#i-power" /></svg>Startup</h2>
+        <label class="checkbox">
+          <input id="startupOnBoot" type="checkbox" />
+          <span>Launch on system startup</span>
+        </label>
+      </section>
+
+      <section class="group">
+        <h2><svg class="sec-ico"><use href="#i-sparkle" /></svg>About</h2>
+        <div class="helper">
+          Time-Tracking Buddy &mdash; free software under the GNU AGPL v3.<br />
+          Copyright (C) 2026 Christos Kokkinas
+        </div>
+        <div class="helper">
+          Source code: <code>https://github.com/chriskokk/time-tracking-buddy</code>
+        </div>
+      </section>
+
+    </main>
+    <footer class="footer">
+      <button id="resetAll" class="danger">Reset all to defaults</button>
+      <button id="close" class="primary">Close</button>
+    </footer>
+    <script type="module" src="./settings.ts"></script>
+  </body>
+</html>

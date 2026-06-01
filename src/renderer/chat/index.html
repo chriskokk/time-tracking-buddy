@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws:;"
+    />
+    <title>End of day review</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="panel">
+      <header class="panel-header" id="dragbar">
+        <span class="title" id="title">Today</span>
+        <div class="header-actions">
+          <button id="refresh" title="Re-summarize today's activity">⟳ Refresh</button>
+          <div class="export-wrap">
+            <button class="ghost" id="exportTrigger" aria-haspopup="menu" aria-expanded="false">Export</button>
+            <div class="export-menu" id="exportMenu" role="menu" hidden>
+              <button class="exp" data-fmt="json" role="menuitem">JSON</button>
+              <button class="exp" data-fmt="csv" role="menuitem">CSV</button>
+              <button class="exp" data-fmt="text" role="menuitem">Text</button>
+            </div>
+          </div>
+          <button class="ghost close" id="close" title="Close">✕</button>
+        </div>
+      </header>
+
+      <div class="status" id="status"></div>
+      <div class="summary-meta" id="summaryMeta" hidden></div>
+
+      <div class="reflection" id="reflection">
+        <button class="reflect-bar" id="reflectToggle">
+          <span class="chev">▸</span><span>Daily reflection</span><span class="reflect-dot" id="reflectDot"></span>
+        </button>
+        <textarea
+          id="reflectText"
+          class="reflect-text"
+          maxlength="2000"
+          placeholder="How did today go? (optional)"
+        ></textarea>
+      </div>
+
+      <section class="blocks" id="blocks"></section>
+
+      <!-- Native autocomplete source for ticket inputs. Populated from
+           distinct ticket_ids on chat-panel init. Empty until then. -->
+      <datalist id="ticketSuggestions"></datalist>
+
+      <div class="subbar">
+        <button class="ghost" id="addBlock">+ Add block</button>
+        <span class="total" id="totals"></span>
+      </div>
+
+      <section class="chatlog" id="chatlog"></section>
+
+      <footer class="composer" id="composer">
+        <input
+          id="chatInput"
+          type="text"
+          autocomplete="off"
+          placeholder="type an instruction, e.g. merge the first two"
+        />
+        <span class="spinner small" id="refineSpinner" aria-hidden="true"></span>
+        <button id="send" class="ghost">Send</button>
+        <!-- Shown only in No-AI mode (chat refine needs an LLM). Manual block
+             editing above stays fully functional. -->
+        <span class="composer-note" id="composerNote"
+          >Chat refinement needs an AI provider. Edit blocks directly above, or switch to Ollama or Claude Code in Settings.</span
+        >
+        <button id="save" class="primary">Save day</button>
+      </footer>
+
+      <!-- Full-panel overlay shown during the initial summarize. The header
+           sits above it (z-index) so the close button + drag region stay
+           usable; everything else (blocks, reflection, chatlog, composer) is
+           blocked while we wait. -->
+      <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
+        <div class="spinner large"></div>
+        <p class="loading-phrase" id="loadingPhrase">Putting your day together...</p>
+      </div>
+    </div>
+    <script type="module" src="./chat.ts"></script>
+  </body>
+</html>

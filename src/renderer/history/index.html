@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws:;"
+    />
+    <title>History</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="toolbar">
+        <div class="range">
+          <label>From <input id="fromDate" type="date" /></label>
+          <label>To <input id="toDate" type="date" /></label>
+          <button class="ghost" data-preset="this-week">This week</button>
+          <button class="ghost" data-preset="last-week">Last week</button>
+          <button class="ghost" data-preset="this-month">This month</button>
+        </div>
+        <div class="actions">
+          <button class="primary" id="exportCsv">Export CSV</button>
+        </div>
+      </header>
+
+      <section class="content" id="content">
+        <div class="empty" id="empty">Loading…</div>
+      </section>
+
+      <footer class="totals" id="totals" hidden>
+        <div class="grand">
+          <span class="label">Grand total</span>
+          <span class="value" id="grandTotal">—</span>
+        </div>
+        <div class="per-ticket">
+          <h3>Per ticket</h3>
+          <table id="ticketTable">
+            <thead>
+              <tr>
+                <th>Ticket</th>
+                <th class="num">Hours</th>
+              </tr>
+            </thead>
+            <tbody id="ticketBody"></tbody>
+          </table>
+        </div>
+      </footer>
+    </main>
+    <script type="module" src="./history.ts"></script>
+  </body>
+</html>

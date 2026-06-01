@@ -1,0 +1,521 @@
+/* GATO animations. Scoped under .gato; keyframes prefixed gato-. */
+
+/* Floor alignment: Gato's feet/contact-shadow sit higher in the viewBox than
+   Musko/Drago, so it looked like it floated. The `translate` individual property
+   shifts the whole creature down and COMPOSES with the bob's transform animation
+   (transform would override a static transform; translate does not). */
+.gato #creature {
+  translate: 0 14px;
+}
+
+.gato #lidL,
+.gato #lidR {
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
+}
+.gato #pupilL,
+.gato #pupilR,
+.gato #mouth,
+.gato #bang,
+.gato .z {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+.gato #earL,
+.gato #earR {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+.gato #tail {
+  transform-box: fill-box;
+  transform-origin: 4% 95%;
+}
+.gato #armL,
+.gato #armR {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+.gato #lashL,
+.gato #lashR {
+  opacity: 0;
+}
+.gato #glasses {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+.gato #notepad {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+
+/* idle (smug/bored): half-lids, slit pupils glancing aside, lazy tail flick */
+.gato.idle #creature {
+  animation: gato-idle-bob 5s ease-in-out infinite;
+}
+.gato.idle #lidL,
+.gato.idle #lidR {
+  animation: gato-idle-eyes 6s ease-in-out infinite;
+}
+.gato.idle #pupilL,
+.gato.idle #pupilR {
+  animation: gato-idle-look 7s ease-in-out infinite;
+}
+.gato.idle #tail {
+  animation: gato-tail-flick 7s ease-in-out infinite;
+}
+.gato.idle #earL {
+  animation: gato-idle-eartwitch 8s ease-in-out infinite;
+}
+
+/* sleeping: closed eyes, ears folded, tail at rest, gentle breathing.
+   Depth-deepening progression (sleep-depth-1/2/3) below uses PROPS — a
+   knitted blanket that slides up over the body, and a floppy nightcap that
+   pops in at the deepest stage — instead of body distortion. Gato's pose
+   stays intact across all four depths; the cozy cues come from the scene
+   around the cat. The .z transition (kept) smooths the zzz growth at
+   deeper stages. */
+.gato.sleeping #creature {
+  animation: gato-breathe 4s ease-in-out infinite;
+}
+.gato.sleeping #zzz .z {
+  transition: scale 1.5s ease;
+}
+.gato.sleeping #lidL,
+.gato.sleeping #lidR {
+  transform: scaleY(1);
+}
+.gato.sleeping #lashL,
+.gato.sleeping #lashR {
+  opacity: 1;
+}
+.gato.sleeping #pupilL,
+.gato.sleeping #pupilR {
+  opacity: 0;
+}
+.gato.sleeping #earL {
+  transform: rotate(-24deg);
+}
+.gato.sleeping #earR {
+  transform: rotate(24deg);
+}
+.gato.sleeping #tail {
+  transform: rotate(20deg);
+}
+.gato.sleeping #zzz {
+  display: block;
+}
+.gato.sleeping .z1 {
+  animation: gato-zfloat 3.6s ease-in-out infinite;
+}
+.gato.sleeping .z2 {
+  animation: gato-zfloat 3.6s ease-in-out infinite 1.2s;
+}
+.gato.sleeping .z3 {
+  animation: gato-zfloat 3.6s ease-in-out infinite 2.4s;
+}
+
+/* --- Deepening sleep stages (prop-based) ---
+   The cat's pose stays intact across all four depths. Cozy cues come from
+   props arriving (blanket, nightcap) and rhythm slowing (breathe + zzz).
+   Each .sleep-depth-N selector adds one class on top of .gato.sleeping
+   (specificity 0,0,3,1) so depth-3 rules win cleanly over depth-2 etc.
+
+   Blanket choreography: drawn natively at chest level (top y≈104, bottom
+   y≈176). Baseline transform translates it 60px down off-screen + opacity
+   0. Depth 2 brings it up to lower-body (translateY 30px) + opacity 1.
+   Depth 3 brings it all the way up to chest (translateY 0). Single
+   transition on .gato.sleeping #blanket drives the smooth slide.
+
+   Nightcap choreography: scales up from 0.3 → 1.0 around its base pivot
+   (50% 100%) only at depth 3. Reads as the cap materializing on the head. */
+
+/* Blanket and cap baselines — hidden + positioned for slide-in. Translate
+   distances tuned to the smaller drape shape (top y≈108, bottom y≈158):
+   off-screen needs ~70px to fully clear the body, depth-2 sits at +22px
+   (top at y≈130, covers lower body + arms), depth-3 sits at +0 (top at
+   y≈108, covers chest down). */
+.gato #blanket {
+  display: none;
+  transform: translateY(70px);
+  opacity: 0;
+  pointer-events: none;
+}
+.gato #sleepcap {
+  display: none;
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  transform: scale(0.3);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* While sleeping (ANY depth) the props are rendered and the transition is
+   active — even at depth 0/1 they're rendered but invisible/off-screen so
+   smooth slide-in works when the depth advances. */
+.gato.sleeping #blanket {
+  display: block;
+  transition: transform 1.5s ease, opacity 1.4s ease;
+}
+.gato.sleeping #sleepcap {
+  display: block;
+  transition: transform 0.7s ease-out, opacity 0.6s ease;
+}
+
+/* Tail tuck — fades out as the blanket arrives so the right-side curl
+   doesn't read as a mug handle past the drape. Synced to the blanket
+   slide-up; on wake the .sleeping rule stops matching and the tail snaps
+   back instantly (no slow-fade-in artifact on idle). */
+.gato.sleeping #tail {
+  transition: opacity 1.2s ease;
+}
+
+/* Depth 1 — breathing slows from 4s → 4.5s. No body, prop, or pose change.
+   The cue is rhythm only: "the cat's breath has slowed". Mouth gets a tiny
+   softening to suggest deeper relaxation without distorting the pose. */
+.gato.sleeping.sleep-depth-1 #creature {
+  animation-duration: 4.5s;
+}
+.gato.sleeping.sleep-depth-1 #mouth {
+  transform: scale(0.85, 0.55);
+}
+
+/* Depth 2 — blanket slides UP from below to drape over the lower body.
+   Breathing slows further (4.5s → 5s). zzz grow ~15%. */
+.gato.sleeping.sleep-depth-2 #creature {
+  animation-duration: 5s;
+}
+.gato.sleeping.sleep-depth-2 #mouth {
+  transform: scale(0.85, 0.55);
+}
+.gato.sleeping.sleep-depth-2 #blanket {
+  opacity: 1;
+  transform: translateY(22px);
+}
+.gato.sleeping.sleep-depth-2 #tail {
+  opacity: 0;
+}
+.gato.sleeping.sleep-depth-2 .z1,
+.gato.sleeping.sleep-depth-2 .z2,
+.gato.sleeping.sleep-depth-2 .z3 {
+  scale: 1.15;
+}
+
+/* Depth 3 — blanket slides up to chest, nightcap pops in on the head. Very
+   slow breathing (6.5s cycle). zzz biggest (1.4×) and slower (5.5s). */
+.gato.sleeping.sleep-depth-3 #creature {
+  animation-duration: 6.5s;
+}
+.gato.sleeping.sleep-depth-3 #mouth {
+  transform: scale(0.8, 0.5);
+}
+.gato.sleeping.sleep-depth-3 #blanket {
+  opacity: 1;
+  transform: translateY(0);
+}
+.gato.sleeping.sleep-depth-3 #tail {
+  opacity: 0;
+}
+.gato.sleeping.sleep-depth-3 #sleepcap {
+  opacity: 1;
+  transform: scale(1);
+}
+.gato.sleeping.sleep-depth-3 .z1,
+.gato.sleeping.sleep-depth-3 .z2,
+.gato.sleeping.sleep-depth-3 .z3 {
+  scale: 1.4;
+  animation-duration: 5.5s;
+}
+
+/* alert: ears perk UP/forward, pupils round out, tail upright + puffed, "!" */
+.gato.alert #creature {
+  animation: gato-alert-bob 0.9s ease-in-out infinite;
+}
+.gato.alert #lidL,
+.gato.alert #lidR {
+  transform: scaleY(0);
+}
+.gato.alert #pupilL,
+.gato.alert #pupilR {
+  transform: scale(2.2, 0.85);
+} /* slit -> round */
+.gato.alert #earL {
+  transform: rotate(8deg);
+} /* perk inward/up, sharp */
+.gato.alert #earR {
+  transform: rotate(-8deg);
+}
+.gato.alert #tail {
+  transform: rotate(-26deg) scale(1.15);
+} /* upright + puffed */
+.gato.alert #bang {
+  display: block;
+  animation: gato-bang-pop 2s ease-in-out infinite;
+}
+
+/* talking: blinks, mouth chatter, ears forward, tail swishing, paw gestures */
+.gato.talking #creature {
+  animation: gato-talk-bob 1.2s ease-in-out infinite;
+}
+.gato.talking #lidL,
+.gato.talking #lidR {
+  animation: gato-talk-blink 4s ease-in-out infinite;
+}
+.gato.talking #mouth {
+  animation: gato-talk-mouth 0.5s ease-in-out infinite;
+}
+.gato.talking #tail {
+  animation: gato-tail-swish 1.4s ease-in-out infinite;
+}
+.gato.talking #armL {
+  animation: gato-talk-arm-l 0.9s ease-in-out infinite;
+}
+.gato.talking #armR {
+  animation: gato-talk-arm-r 0.9s ease-in-out infinite;
+}
+
+/* reading (scratchpad-open overlay): glasses + notepad appear, slit pupils
+   look down, gentle bob, slow blink, lazy tail flick + occasional ear twitch.
+   The tail-flick is the gato-characteristic ambient carrier. */
+.gato.reading #glasses {
+  display: block;
+  animation: gato-glasses-drop 0.4s ease-out forwards;
+}
+.gato.reading #notepad {
+  display: block;
+  animation: gato-notepad-rise 0.5s ease-out 0.2s both;
+}
+.gato.reading #creature {
+  animation: gato-reading-bob 5s ease-in-out infinite;
+}
+.gato.reading #lidL,
+.gato.reading #lidR {
+  animation: gato-reading-blink 5s ease-in-out infinite;
+}
+.gato.reading #pupilL,
+.gato.reading #pupilR {
+  transform: translateY(2.5px);
+}
+.gato.reading #armL {
+  animation: gato-reading-arm-l 0.5s ease-out 0.2s both;
+}
+.gato.reading #armR {
+  animation: gato-reading-arm-r 0.5s ease-out 0.2s both;
+}
+.gato.reading #tail {
+  animation: gato-reading-tail 7s ease-in-out infinite;
+}
+.gato.reading #earL {
+  animation: gato-reading-ear-l 6s ease-in-out infinite;
+}
+.gato.reading #earR {
+  animation: gato-reading-ear-r 6s ease-in-out infinite;
+}
+.gato.reading #mouth {
+  transform: scale(0.9, 0.5);
+}
+
+/* reading exit (renderer keeps .reading.exiting on for 0.3s for the reverse). */
+.gato.reading.exiting #glasses {
+  animation: gato-glasses-lift 0.3s ease-in forwards;
+}
+.gato.reading.exiting #notepad {
+  animation: gato-notepad-drop 0.3s ease-in forwards;
+}
+.gato.reading.exiting #armL {
+  animation: gato-reading-arm-l-exit 0.3s ease-in forwards;
+}
+.gato.reading.exiting #armR {
+  animation: gato-reading-arm-r-exit 0.3s ease-in forwards;
+}
+
+/* dragging (last = wins): STARTLED-STIFF cat — body rigid (tense tremble, not a
+   floppy wobble), legs/paws splayed out rigid, tail STRAIGHT UP + puffed, ears
+   airplane-flat back (opposite of alert), pupils blown fully round. */
+.gato.dragging #creature {
+  animation: gato-drag-stiff 0.16s linear infinite;
+}
+.gato.dragging #lidL,
+.gato.dragging #lidR {
+  animation: none;
+  transform: scaleY(0);
+}
+.gato.dragging #pupilL,
+.gato.dragging #pupilR {
+  animation: none;
+  opacity: 1;
+  transform: scale(2.6, 1);
+} /* fully round, blown */
+.gato.dragging #lashL,
+.gato.dragging #lashR {
+  opacity: 0;
+}
+.gato.dragging #earL {
+  animation: none;
+  transform: rotate(-46deg);
+} /* airplane: flat back */
+.gato.dragging #earR {
+  animation: none;
+  transform: rotate(46deg);
+}
+.gato.dragging #tail {
+  animation: none;
+  transform: rotate(-28deg) scale(1.35);
+} /* puffed up + bristled, kept inside the frame */
+.gato.dragging #mouth {
+  animation: none;
+  transform: scale(1.4, 1.6);
+} /* small "oh" */
+.gato.dragging #armL,
+.gato.dragging #armR {
+  animation: none;
+  transform: translateY(3px);
+} /* legs braced stiffly UNDER the body, not splayed */
+.gato.dragging #zzz,
+.gato.dragging #bang {
+  display: none;
+}
+/* Dragging overrides reading: dropped from paws, props vanish. */
+.gato.dragging #glasses,
+.gato.dragging #notepad {
+  display: none;
+  animation: none;
+}
+
+@keyframes gato-idle-eartwitch {
+  0%, 84%, 100% { transform: rotate(0deg); }
+  90% { transform: rotate(-8deg); }
+  95% { transform: rotate(0deg); }
+}
+@keyframes gato-idle-bob {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  50% { transform: translateY(2px) scaleY(0.97); }
+}
+@keyframes gato-idle-eyes {
+  0%, 86%, 100% { transform: scaleY(0.5); }
+  92% { transform: scaleY(1); }
+  97% { transform: scaleY(0.5); }
+}
+@keyframes gato-idle-look {
+  0%, 15% { transform: translateX(-2px); }
+  50%, 65% { transform: translateX(2px); }
+  100% { transform: translateX(-2px); }
+}
+@keyframes gato-tail-flick {
+  0%, 70%, 100% { transform: rotate(0deg); }
+  80% { transform: rotate(-12deg); }
+  90% { transform: rotate(4deg); }
+}
+@keyframes gato-breathe {
+  0%, 100% { transform: translateY(7px) scaleY(1); }
+  50% { transform: translateY(7px) scaleY(1.035); }
+}
+@keyframes gato-zfloat {
+  0% { opacity: 0; transform: translate(0, 4px) scale(0.5); }
+  25% { opacity: 1; }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translate(12px, -22px) scale(1.1); }
+}
+@keyframes gato-alert-bob {
+  0%, 100% { transform: translateY(-4px); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes gato-bang-pop {
+  0% { opacity: 0; transform: scale(0); }
+  12% { opacity: 1; transform: scale(1.15); }
+  24% { transform: scale(1); }
+  65% { opacity: 1; }
+  80%, 100% { opacity: 0; }
+}
+@keyframes gato-talk-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+@keyframes gato-talk-blink {
+  0%, 90%, 100% { transform: scaleY(0); }
+  95% { transform: scaleY(1); }
+}
+@keyframes gato-talk-mouth {
+  0% { transform: scale(1, 0.4); }
+  25% { transform: scale(0.9, 1.4); }
+  50% { transform: scale(1, 0.6); }
+  75% { transform: scale(0.85, 1.2); }
+  100% { transform: scale(1, 0.4); }
+}
+@keyframes gato-tail-swish {
+  0%, 100% { transform: rotate(-14deg); }
+  50% { transform: rotate(10deg); }
+}
+@keyframes gato-talk-arm-l {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-12deg); }
+}
+@keyframes gato-talk-arm-r {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(12deg); }
+}
+@keyframes gato-drag-stiff {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-1.2px, 0); }
+  50% { transform: translate(1.2px, -1px); }
+  75% { transform: translate(-1px, 1px); }
+}
+
+/* --- reading entry (one-shot, forwards) --- */
+@keyframes gato-glasses-drop {
+  0%   { transform: translateY(-44px); opacity: 0; }
+  70%  { transform: translateY(3px);   opacity: 1; }
+  100% { transform: translateY(0);     opacity: 1; }
+}
+@keyframes gato-notepad-rise {
+  0%   { transform: translateY(40px); opacity: 0; }
+  100% { transform: translateY(0);    opacity: 1; }
+}
+@keyframes gato-reading-arm-l {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(-10deg); }
+}
+@keyframes gato-reading-arm-r {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(10deg); }
+}
+
+/* --- reading loop (continuous, cheap) --- */
+@keyframes gato-reading-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(1.5px); }
+}
+@keyframes gato-reading-blink {
+  0%, 88%, 100% { transform: scaleY(0.18); }
+  93%           { transform: scaleY(1); }
+}
+@keyframes gato-reading-tail {
+  0%, 75%, 100% { transform: rotate(0deg); }
+  85%           { transform: rotate(-8deg); }
+  92%           { transform: rotate(3deg); }
+}
+@keyframes gato-reading-ear-l {
+  0%, 82%, 100% { transform: rotate(0deg); }
+  89%           { transform: rotate(-6deg); }
+}
+@keyframes gato-reading-ear-r {
+  0%, 82%, 100% { transform: rotate(0deg); }
+  89%           { transform: rotate(6deg); }
+}
+
+/* --- reading exit (reverse, forwards) --- */
+@keyframes gato-glasses-lift {
+  0%   { transform: translateY(0);    opacity: 1; }
+  100% { transform: translateY(-44px); opacity: 0; }
+}
+@keyframes gato-notepad-drop {
+  0%   { transform: translateY(0);   opacity: 1; }
+  100% { transform: translateY(40px); opacity: 0; }
+}
+@keyframes gato-reading-arm-l-exit {
+  0%   { transform: rotate(-10deg); }
+  100% { transform: rotate(0deg); }
+}
+@keyframes gato-reading-arm-r-exit {
+  0%   { transform: rotate(10deg); }
+  100% { transform: rotate(0deg); }
+}

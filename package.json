@@ -1,0 +1,33 @@
+{
+  "name": "time-tracking-buddy",
+  "productName": "Time-Tracking Buddy",
+  "version": "1.0.0",
+  "description": "Personal time-tracking desktop companion",
+  "main": "./out/main/index.js",
+  "author": "Christos Kokkinas",
+  "license": "AGPL-3.0-or-later",
+  "private": true,
+  "scripts": {
+    "start": "electron-vite dev",
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "npm run build && electron-vite preview",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "render:icons": "electron scripts/render-musko-icons.cjs 1024 build/icon.png && electron scripts/render-musko-icons.cjs 64 assets/tray-icon.png",
+    "build:win": "npm run build && electron-builder --win --publish never",
+    "build:mac": "npm run build && electron-builder --mac --publish never"
+  },
+  "devDependencies": {
+    "@electron-toolkit/utils": "^4.0.0",
+    "electron": "^42.3.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^5.0.0",
+    "typescript": "^6.0.3",
+    "vite": "^7.3.3"
+  },
+  "dependencies": {
+    "active-win": "^8.2.1"
+  }
+}

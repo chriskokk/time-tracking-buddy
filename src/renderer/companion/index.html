@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws:;"
+    />
+    <title>Companion</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <!-- The chosen avatar's SVG is injected into #sprite at runtime (companion.ts).
+         Only the painted #creature captures the mouse; clicks fall through gaps. -->
+    <div id="sprite" class="sprite" aria-label="companion"></div>
+    <script type="module" src="./companion.ts"></script>
+  </body>
+</html>

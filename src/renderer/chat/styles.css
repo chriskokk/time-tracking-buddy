@@ -1,0 +1,561 @@
+:root {
+  --bg: #1b2330;
+  --bg-soft: #232d3d;
+  --bg-input: #2b3850;
+  --border: #38465e;
+  --text: #e7edf6;
+  --muted: #9fb0c8;
+  --accent: #8fd6ff;
+  --accent-deep: #2a7fd4;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent; /* frameless+transparent window: corners show through */
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  user-select: none;
+}
+
+/* The visible card. Padding around it (via body) is just transparent window.
+   position: relative so the loading-overlay can absolute-position to fill. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  position: relative;
+}
+
+/* Header is the drag region; interactive children opt out. z-index keeps the
+   close button + drag region clickable above the loading overlay (which has
+   z-index 1) — overlay visually dims everything but doesn't block close/drag. */
+.panel-header {
+  -webkit-app-region: drag;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, var(--bg-soft), var(--bg));
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  z-index: 2;
+}
+.title {
+  font-weight: 600;
+  flex: 1;
+  letter-spacing: 0.2px;
+  /* Don't let the date "(YYYY-MM-DD)" wrap to a second line when the header
+     gets tight — the actions on the right take what they need first. */
+  white-space: nowrap;
+}
+.header-actions {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Export dropdown: a trigger button + an absolutely-positioned menu.
+   .export-wrap establishes the positioning context so the menu sits flush
+   under the trigger; z-index 3 keeps it above the loading overlay (z 1)
+   inside the header's stacking context (z 2). */
+.export-wrap {
+  position: relative;
+  display: inline-block;
+}
+/* Dropdown caret as a pseudo-element so the trigger's textContent stays a
+   bare "Export" — flash() swaps textContent to "copied" and back; keeping
+   the caret out of the DOM means flash can't accidentally strip its style. */
+#exportTrigger::after {
+  content: ' ▾';
+  font-size: 10px;
+  margin-left: 2px;
+  color: var(--muted);
+}
+/* Hide the caret while "copied" is showing — the chevron next to "copied"
+   would imply the menu is still openable, which it isn't during that beat. */
+#exportTrigger.flash::after {
+  content: none;
+}
+.export-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  z-index: 3;
+}
+/* Author-level override for the HTML `hidden` attribute. Without this, the
+   `display: flex` above beats the UA stylesheet's `[hidden] { display: none }`
+   and the menu renders open by default. With it, `exportMenu.hidden = true/false`
+   in chat.ts becomes the real open/closed toggle. */
+.export-menu[hidden] {
+  display: none;
+}
+.export-menu button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  text-align: left;
+  padding: 6px 10px;
+}
+.export-menu button:hover {
+  background: var(--bg-input);
+  border-color: transparent;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text);
+  padding: 5px 10px;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+button:hover {
+  border-color: var(--accent-deep);
+}
+button.ghost {
+  background: transparent;
+}
+button.ghost:hover {
+  background: var(--bg-input);
+}
+button.flash {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+button.primary {
+  background: var(--accent-deep);
+  border-color: var(--accent-deep);
+  color: #fff;
+  font-weight: 600;
+}
+button.primary:hover {
+  background: #3a90e6;
+}
+.close {
+  /* Extra left margin keeps Close visually separate from the action group so
+     it doesn't look like part of the same dropdown cluster. */
+  margin-left: 6px;
+  padding: 5px 9px;
+}
+
+/* Status banner (loading / error) */
+.status {
+  display: none;
+}
+.status.show {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+.status.error {
+  color: #f0b8ad;
+}
+.status button {
+  margin-left: auto;
+}
+
+/* Small "Summarized with X / model" caption under the status bar. */
+.summary-meta {
+  padding: 4px 12px;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.summary-meta[hidden] {
+  display: none;
+}
+
+/* Daily reflection (collapsible bar above the blocks) */
+.reflection {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-soft);
+}
+.reflect-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 12px;
+  font-weight: 600;
+}
+.reflect-bar:hover {
+  color: var(--text);
+  background: var(--bg-input);
+}
+.reflect-bar .chev {
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+.reflection.open .reflect-bar .chev {
+  transform: rotate(90deg);
+}
+.reflect-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: transparent;
+}
+.reflect-dot.on {
+  background: var(--accent);
+}
+.reflect-text {
+  display: none;
+  width: calc(100% - 24px);
+  margin: 0 12px 10px;
+  resize: vertical;
+  min-height: 48px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  outline: none;
+}
+.reflection.open .reflect-text {
+  display: block;
+}
+.reflect-text:focus {
+  border-color: var(--accent-deep);
+}
+
+/* Per-block private note */
+.note-btn {
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+.note-btn:hover {
+  opacity: 0.8;
+}
+.note-btn.has-note {
+  opacity: 1;
+  filter: none;
+  border-color: var(--accent-deep);
+}
+.block-note {
+  display: none;
+  margin-top: 7px;
+}
+.block-note.open {
+  display: block;
+}
+.note-private {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.note-area {
+  width: 100%;
+  resize: vertical;
+  min-height: 38px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 7px;
+  outline: none;
+}
+.note-area:focus {
+  border-color: var(--accent-deep);
+}
+
+/* Block list */
+.blocks {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+}
+.block {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 8px 9px;
+}
+.block-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.block-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+input {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  outline: none;
+  user-select: text;
+}
+input:focus {
+  border-color: var(--accent-deep);
+}
+input.invalid {
+  border-color: #e2604d;
+}
+input.t {
+  width: 48px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+input.label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+input.ticket {
+  width: 110px;
+}
+.sep {
+  color: var(--muted);
+}
+
+.conf {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #10161f;
+}
+.conf-high {
+  background: #6fd08f;
+}
+.conf-medium {
+  background: #e7c66b;
+}
+.conf-low {
+  background: #8595ad;
+}
+
+.prov {
+  width: 14px;
+  text-align: center;
+  color: var(--accent);
+}
+
+.dur {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 56px;
+}
+.del {
+  margin-left: auto;
+  padding: 3px 8px;
+  color: var(--muted);
+}
+.del:hover {
+  color: #e2604d;
+  border-color: #e2604d;
+}
+
+.subbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-soft);
+}
+.total {
+  color: var(--muted);
+}
+
+/* Chat log */
+.chatlog {
+  flex: 0 0 130px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.msg {
+  display: flex;
+  gap: 6px;
+  line-height: 1.35;
+}
+.msg .who {
+  flex: 0 0 auto;
+  font-weight: 700;
+  font-size: 11px;
+  padding-top: 1px;
+}
+.msg.you .who {
+  color: var(--accent);
+}
+.msg.companion .who {
+  color: #6fd08f;
+}
+.msg .body {
+  color: var(--text);
+  user-select: text;
+}
+.msg.pending .body {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* Composer */
+.composer {
+  display: flex;
+  /* Center every item vertically so "Save day" keeps its natural height and a
+     fixed, centered position even when the No-AI note wraps to multiple lines
+     (default `stretch` would balloon the button to the row height). */
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-soft);
+}
+.composer input {
+  flex: 1 1 auto;
+  min-width: 0; /* allow the input to shrink rather than push Save day out */
+}
+/* Save day: fixed size, never shrinks, stays pinned right + centered in BOTH
+   modes (the left item's flex-grow pushes it to the right edge). */
+.composer #save {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* No-AI mode: chat refine is useless without an LLM, so hide the input + Send
+   and surface a note in their place. Save stays. Class-toggled (not [hidden]) so
+   it reliably overrides the flex display above. */
+.composer-note {
+  display: none;
+  flex: 1 1 auto;
+  min-width: 0; /* wrap within the left side instead of pushing Save day right */
+  font-size: 12px;
+  color: var(--muted);
+}
+.composer.no-ai #chatInput,
+.composer.no-ai #send,
+.composer.no-ai #refineSpinner {
+  display: none;
+}
+.composer.no-ai .composer-note {
+  display: block;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 6px;
+  border: 2px solid var(--bg);
+}
+
+/* --- Spinner (pure CSS, 1-element border-color trick) ---
+   .large for the initial-summarize overlay; .small for the composer-side
+   refine spinner. Animation always runs (cheap; no JS toggle) — the parent
+   hides the element via display:none when not needed. */
+.spinner {
+  display: inline-block;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spinner-spin 0.9s linear infinite;
+}
+.spinner.large {
+  width: 40px;
+  height: 40px;
+}
+.spinner.small {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+  vertical-align: middle;
+  display: none; /* hidden until #refineSpinner.show is applied */
+}
+#refineSpinner.show {
+  display: inline-block;
+}
+@keyframes spinner-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* --- Full-panel loading overlay (initial summarize only) ---
+   Sits at z-index 1; the header is z-index 2 so close + drag still work.
+   Hidden by default; .show toggles the flex display. */
+.loading-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: rgba(27, 35, 48, 0.86); /* matches --bg with alpha */
+  backdrop-filter: blur(2px);
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 18px;
+  pointer-events: auto;
+}
+.loading-overlay.show {
+  display: flex;
+}
+.loading-phrase {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  max-width: 260px;
+  line-height: 1.4;
+  transition: opacity 0.2s ease;
+}

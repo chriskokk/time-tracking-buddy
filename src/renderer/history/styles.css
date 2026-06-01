@@ -1,0 +1,277 @@
+:root {
+  --bg: #f4f6fa;
+  --card: #ffffff;
+  --border: #d3dae6;
+  --text: #1d2733;
+  --muted: #5c6b7e;
+  --accent: #2a7fd4;
+  --soft: #eaf3fc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* Toolbar: range pickers + presets on the left, export on the right. Sticks
+   to the top of the viewport so the action buttons stay reachable while
+   scrolling the per-day list. */
+.toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.range label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+input[type='date'] {
+  font: inherit;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  outline: none;
+}
+input[type='date']:focus {
+  border-color: var(--accent);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  padding: 5px 11px;
+}
+button:hover {
+  border-color: var(--accent);
+}
+button.ghost {
+  background: transparent;
+  color: var(--muted);
+}
+button.ghost:hover {
+  color: var(--text);
+  background: var(--soft);
+}
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+button.primary:hover {
+  background: #3a90e6;
+}
+
+/* Middle scroll region — the per-day list. */
+.content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 12px 14px;
+}
+.empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 40px 0;
+}
+
+.day {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.day-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.day-date {
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.2px;
+}
+/* Clickable day header — looks like the regular header but exposes the
+   pointer cursor and an underline on hover so it reads as actionable. The
+   <button> reset zeroes out the default button chrome we don't want. */
+button.day-date {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+button.day-date:hover {
+  text-decoration: underline;
+}
+.day-total {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.entries {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.entry {
+  display: grid;
+  grid-template-columns: 120px 1fr 110px 70px;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+}
+.entry-time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.entry-label {
+  color: var(--text);
+}
+.entry-ticket {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+.entry-ticket.empty {
+  color: var(--muted);
+  font-style: italic;
+}
+.entry-dur {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.entry-notes {
+  grid-column: 2 / span 3;
+  color: var(--muted);
+  font-size: 12px;
+  padding-left: 4px;
+  border-left: 2px solid var(--border);
+  margin: 2px 0 4px;
+}
+
+.reflection {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--accent);
+  background: var(--soft);
+  border-radius: 4px;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+.reflection .label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 2px;
+  display: block;
+}
+
+/* Bottom totals panel — sticky so it stays visible while scrolling. */
+.totals {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 12px 14px;
+  background: var(--card);
+  border-top: 1px solid var(--border);
+}
+.grand {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.grand .label {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.grand .value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.per-ticket {
+  flex: 1 1 auto;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.per-ticket h3 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+th,
+td {
+  text-align: left;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+}
+th {
+  color: var(--muted);
+  font-weight: 600;
+}
+td.num,
+th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+tr:last-child td {
+  border-bottom: none;
+}
+.no-ticket {
+  color: var(--muted);
+  font-style: italic;
+}
