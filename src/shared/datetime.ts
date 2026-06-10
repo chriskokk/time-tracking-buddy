@@ -21,3 +21,14 @@ export function parseHHMMToMinutes(hhmm: string): number | null {
   if (h > 23 || min > 59) return null
   return h * 60 + min
 }
+
+/** True iff `s` is a real local calendar date in "YYYY-MM-DD" form. Shape-only
+ *  regex checks let impossible dates through (e.g. "2026-13-45"), which then
+ *  never match a real localDateStr() and the feature silently no-ops — the
+ *  Date round-trip catches month/day overflow. */
+export function isValidDateStr(s: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s.trim())
+  if (!m) return false
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  return localDateStr(d) === s.trim()
+}

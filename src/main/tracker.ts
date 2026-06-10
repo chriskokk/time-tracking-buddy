@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import activeWindow from 'active-win'
+import { activeWindow } from 'get-windows'
 import { powerMonitor } from 'electron'
 import { insertActivitySample, getSamplesSince } from './db'
 import { compileExcludePattern } from '../shared/config'
 import type { ActivitySample } from '../shared/types'
 
 // Cap a single session so a window left focused for hours doesn't become one
-// giant row — commit and start a fresh session once this elapses.
-const MAX_SESSION_S = 30 * 60
+// giant row — commit and start a fresh session once this elapses. Exported so
+// day-boundary queries know the maximum span a single sample can cover.
+export const MAX_SESSION_S = 30 * 60
 
 /** The in-memory, not-yet-persisted current run of focus. */
 interface Session {
@@ -105,9 +106,14 @@ async function poll(): Promise<void> {
       title = win.title || ''
     }
   } catch (err) {
-    console.error('[tracker] active-win error:', err)
+    console.error('[tracker] get-windows error:', err)
     return
   }
+
+  // Re-check after the await: stopTracker()/setPaused(true) may have run while
+  // the window probe was in flight — a stale poll must not re-create `current`
+  // and record time across a privacy pause.
+  if (paused || !timer) return
 
   // Excluded apps (password managers, banking, etc.): a match on EITHER the app
   // name or the window title drops the sample. Close out any in-flight session
@@ -146,7 +152,33 @@ async function poll(): Promise<void> {
   current = { app, title, startTs: now, endTs: now }
 }
 
+// System sleep: a session left in flight across a suspend would have its endTs
+// extended to the first poll after wake (the wake-up input resets the idle
+// counter, so idle gating can't catch it), counting the sleep as work. Commit
+// at suspend onset instead; the first poll after resume starts a fresh session
+// naturally (current is null). Registered lazily on first startTracker():
+// powerMonitor is only usable after app.whenReady(), and the tracker only
+// starts after that.
+let powerHooksInstalled = false
+
+function installPowerHooks(): void {
+  if (powerHooksInstalled) return
+  powerHooksInstalled = true
+  powerMonitor.on('suspend', () => {
+    if (current) {
+      current.endTs = nowS()
+      commit(current)
+      current = null
+    }
+    console.log('[tracker] system suspend — committed in-flight session')
+  })
+  powerMonitor.on('resume', () => {
+    console.log('[tracker] system resume — next poll starts a fresh session')
+  })
+}
+
 export function startTracker(): void {
+  installPowerHooks()
   if (timer || paused) return
   console.log(`[tracker] started (poll every ${Math.round(pollIntervalMs / 1000)}s)`)
   void poll() // sample immediately rather than waiting a full interval

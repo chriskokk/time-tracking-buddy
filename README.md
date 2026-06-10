@@ -12,8 +12,6 @@ Everything stays on your machine in a local SQLite database. Summarizing the day
 
 ## Screenshots
 
-> Images live in [`docs/`](docs/). Replace these placeholders with real captures.
-
 **The companion** — four avatars, each with idle / sleeping / alert / talking / reading / dragging states:
 
 ![Companion avatars](docs/avatars.png)

@@ -15,12 +15,24 @@ files:
   - "!**/*.{md,ts,map,tsbuildinfo}"
   - "!{tsconfig*.json,electron.vite.config.ts}"
 
-# active-win ships a prebuilt .node binary (N-API, ABI-stable). It must live
-# outside the asar so dlopen can find it at runtime. node:sqlite is built into
-# Electron itself, no native module to unpack.
+# get-windows ships prebuilt .node binaries (N-API, ABI-stable) plus a helper
+# binary on macOS, resolved at runtime via node-pre-gyp. They must live outside
+# the asar so dlopen/spawn can find them. node:sqlite is built into Electron
+# itself, no native module to unpack.
 asarUnpack:
   - "**/*.node"
-  - "**/active-win/**"
+  - "**/get-windows/**"
+
+# Without these fuses the packaged binary doubles as a general-purpose Node
+# runtime (ELECTRON_RUN_AS_NODE / NODE_OPTIONS / --inspect), which malware on
+# the machine can borrow to run code under this app's identity and permissions
+# (notably the macOS Screen Recording grant).
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableCookieEncryption: true
+  onlyLoadAppFromAsar: true
 
 win:
   target: nsis
@@ -49,7 +61,7 @@ mac:
   category: public.app-category.productivity
   artifactName: "${productName}-${version}.${ext}"
   # Hardened runtime + entitlements are required for (future) notarization and,
-  # critically, to let the hardened app load active-win's native binary
+  # critically, to let the hardened app load get-windows' native binary
   # (disable-library-validation). These are no-ops on an UNSIGNED build —
   # electron-builder skips codesign entirely when no Developer ID is configured.
   hardenedRuntime: true

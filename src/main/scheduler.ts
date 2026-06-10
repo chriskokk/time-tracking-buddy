@@ -174,12 +174,14 @@ export function forceState(state: CompanionState): void {
   evaluate('force')
 }
 
-/** Called when the user saves or discards the end-of-day review. Marks today
- *  reviewed, drops any forced state, and re-evaluates (which leaves `talking`:
- *  to `sleeping` after close, or back to the time-of-day phase if reviewed early
- *  via the tray). */
-export function endReview(): void {
-  reviewedDate = localDate(new Date())
+/** Called when the user saves or discards the end-of-day review. Marks the
+ *  reviewed date as done, drops any forced state, and re-evaluates (which
+ *  leaves `talking`: to `sleeping` after close, or back to the time-of-day
+ *  phase if reviewed early via the tray). desiredState only maps
+ *  closed→sleeping when reviewedDate equals today, so reviewing a past day
+ *  does not suppress today's automatic review. */
+export function endReview(reviewedDateStr?: string): void {
+  reviewedDate = reviewedDateStr ?? localDate(new Date())
   mode = 'schedule'
   forcedState = null
   evaluate('reviewed')

@@ -2,12 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <!-- Electron/V8 need JIT and writable+executable memory under the hardened runtime. -->
+  <!-- Electron/V8 need JIT under the hardened runtime. allow-jit is sufficient
+       on modern Electron; the broader allow-unsigned-executable-memory is
+       intentionally not granted. -->
   <key>com.apple.security.cs.allow-jit</key>
   <true/>
-  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-  <true/>
-  <!-- Required so the hardened, signed app can load active-win's native binary,
+  <!-- Required so the hardened, signed app can load get-windows' native binary,
        which is not signed by our Developer ID. Without this, capture fails to
        load on a notarized build. -->
   <key>com.apple.security.cs.disable-library-validation</key>

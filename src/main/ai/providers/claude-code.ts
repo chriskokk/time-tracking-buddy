@@ -27,7 +27,12 @@ function killTree(child: ChildProcess): void {
   if (child.pid === undefined) return
   try {
     if (isWindows) {
-      spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'])
+      // The 'error' listener is required: a failed taskkill spawn emits an
+      // async 'error' event, which with no listener is an uncaught exception
+      // that crashes the main process (the try/catch only covers sync throws).
+      spawn('taskkill', ['/pid', String(child.pid), '/t', '/f']).on('error', (err) =>
+        console.error('[claude] taskkill failed:', err.message)
+      )
     } else {
       child.kill('SIGKILL')
     }

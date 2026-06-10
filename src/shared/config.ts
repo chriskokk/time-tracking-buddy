@@ -54,6 +54,10 @@ export const VOICE_PROFILES: Record<string, { pitch: number; rate: number }> = {
 export function compileExcludePattern(line: string): RegExp | null {
   const trimmed = line.trim()
   if (!trimmed) return null
+  // Length cap: these patterns run against every window title on every poll,
+  // so a pathological (or maliciously injected) pattern is a CPU/ReDoS vector
+  // inside the tracker loop. Real app-name patterns are short.
+  if (trimmed.length > 200) return null
   const body = trimmed.replace(/^\(\?i\)/, '')
   try {
     return new RegExp(body, 'i')

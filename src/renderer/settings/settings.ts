@@ -4,6 +4,7 @@
 // Invalid input shows a red border; the last valid value stays in effect.
 
 import { compileExcludePattern, VOICE_PROFILES } from '../../shared/config'
+import { parseHHMMToMinutes, isValidDateStr } from '../../shared/datetime'
 import type { Settings } from '../../shared/types'
 import { musko } from '../companion/avatars/musko/musko'
 import { drago } from '../companion/avatars/drago/drago'
@@ -20,17 +21,16 @@ let selectedAvatar = 'musko'
 
 const byId = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
 
-function debounce(fn: () => void, ms: number): () => void {
-  let t: ReturnType<typeof setTimeout> | null = null
-  return () => {
-    if (t) clearTimeout(t)
-    t = setTimeout(fn, ms)
-  }
-}
+// Pending debounced commits — flushed on window close so an edit made within
+// 500ms of closing isn't silently lost (the debounce timer dies with the page).
+const pendingFlushes = new Set<() => void>()
+
+window.addEventListener('beforeunload', () => {
+  for (const flush of [...pendingFlushes]) flush()
+})
 
 // --- validators ---
 
-const isTime = (v: string): boolean => /^([01]?\d|2[0-3]):[0-5]\d$/.test(v.trim())
 const isInt = (v: string, min: number, max: number): boolean => {
   const n = Number(v)
   return v.trim() !== '' && Number.isInteger(n) && n >= min && n <= max
@@ -46,28 +46,77 @@ const isUrl = (v: string): boolean => {
 const isModel = (v: string): boolean => v.trim().length > 0
 const isExcluded = (v: string): boolean =>
   v.split(/\r?\n/).every((line) => line.trim() === '' || compileExcludePattern(line) !== null)
-// Excluded dates: every non-blank line must be YYYY-MM-DD (same shape the
-// scheduler parses; malformed lines are dropped there too).
+// Excluded dates: every non-blank line must be a REAL calendar date (shape-only
+// checks let "2026-13-45" through, which then never matches and the exclusion
+// silently never fires). Same validator main uses when parsing the policy.
 const isExcludedDates = (v: string): boolean =>
-  v.split(/\r?\n/).every((line) => line.trim() === '' || /^\d{4}-\d{2}-\d{2}$/.test(line.trim()))
+  v.split(/\r?\n/).every((line) => line.trim() === '' || isValidDateStr(line))
 
 function setInvalid(el: HTMLElement, invalid: boolean): void {
   el.classList.toggle('invalid', invalid)
 }
 
-/** Wire a text/number/textarea field: debounced validate -> persist if valid. */
+/** Wire a text/number/textarea field: debounced validate -> persist if valid.
+ *  The TRIMMED value is what persists — validators trim before checking, so a
+ *  raw persist could store values that pass validation but fail at use time
+ *  (e.g. a trailing space in the Ollama host). */
 function wireField(id: string, validate: (v: string) => boolean): void {
   const el = byId<HTMLInputElement | HTMLTextAreaElement>(id)
-  const commit = debounce(() => {
-    const v = el.value
+  let t: ReturnType<typeof setTimeout> | null = null
+  const commit = (): void => {
+    if (t) {
+      clearTimeout(t)
+      t = null
+    }
+    pendingFlushes.delete(commit)
+    const v = el.value.trim()
     if (validate(v)) {
       setInvalid(el, false)
       window.api.settingsUpdate(id, v)
     } else {
       setInvalid(el, true)
     }
-  }, 500)
-  el.addEventListener('input', commit)
+  }
+  el.addEventListener('input', () => {
+    if (t) clearTimeout(t)
+    pendingFlushes.add(commit)
+    t = setTimeout(commit, 500)
+  })
+}
+
+/** The work-hours pair validates TOGETHER: each must be a valid HH:MM and
+ *  start must come before close. Individually-valid but inverted values would
+ *  silently wedge the scheduler (asleep until the "start" hour, then straight
+ *  into the end-of-day review). */
+function wireSchedulePair(): void {
+  const startEl = byId<HTMLInputElement>('workStartHour')
+  const closeEl = byId<HTMLInputElement>('workCloseHour')
+  let t: ReturnType<typeof setTimeout> | null = null
+  const commit = (): void => {
+    if (t) {
+      clearTimeout(t)
+      t = null
+    }
+    pendingFlushes.delete(commit)
+    const start = startEl.value.trim()
+    const close = closeEl.value.trim()
+    const startMin = parseHHMMToMinutes(start)
+    const closeMin = parseHHMMToMinutes(close)
+    const ok = startMin !== null && closeMin !== null && startMin < closeMin
+    setInvalid(startEl, !ok)
+    setInvalid(closeEl, !ok)
+    if (ok) {
+      window.api.settingsUpdate('workStartHour', start)
+      window.api.settingsUpdate('workCloseHour', close)
+    }
+  }
+  const schedule = (): void => {
+    if (t) clearTimeout(t)
+    pendingFlushes.add(commit)
+    t = setTimeout(commit, 500)
+  }
+  startEl.addEventListener('input', schedule)
+  closeEl.addEventListener('input', schedule)
 }
 
 // --- populate from current settings ---
@@ -200,8 +249,7 @@ async function refreshProviderAvailability(redetect: boolean): Promise<void> {
 
 // --- wiring ---
 
-wireField('workStartHour', isTime)
-wireField('workCloseHour', isTime)
+wireSchedulePair()
 wireField('preCloseAlertMinutes', (v) => isInt(v, 0, 240))
 wireField('excludedDates', isExcludedDates)
 wireField('captureIntervalSeconds', (v) => isInt(v, 5, 3600))

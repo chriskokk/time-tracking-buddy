@@ -11,6 +11,7 @@ import {
   shell
 } from 'electron'
 import { join } from 'path'
+import { promises as fsp } from 'fs'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { createTray } from './tray'
 import {
@@ -41,7 +42,8 @@ import {
   setIdleDetection,
   setIdleThresholdMinutes,
   setPaused,
-  isPaused
+  isPaused,
+  MAX_SESSION_S
 } from './tracker'
 import {
   testSummarize,
@@ -65,10 +67,10 @@ import {
   trackTodayAnyway,
   endReview
 } from './scheduler'
-import { initSettings, getSettings, updateSetting, resetAllSettings } from './settings'
+import { initSettings, getSettings, updateSetting, resetAllSettings, DEFAULT_SETTINGS } from './settings'
 import { runAutoBackup, runManualBackup } from './backup'
 import { DEFAULT_SCHEDULE, type ScheduleConfig } from '../shared/config'
-import { localDateStr, pad2, parseHHMMToMinutes } from '../shared/datetime'
+import { localDateStr, pad2, parseHHMMToMinutes, isValidDateStr } from '../shared/datetime'
 import type {
   CompanionState,
   DayBlock,
@@ -125,9 +127,11 @@ function localMidnightEpoch(): number {
  *    to an arbitrary one of the two epochs. */
 function hhmmToEpochSeconds(dateStr: string, hhmm: string): number | null {
   const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr)
-  const tm = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim())
-  if (!dm || !tm) return null
-  const d = new Date(Number(dm[1]), Number(dm[2]) - 1, Number(dm[3]), Number(tm[1]), Number(tm[2]), 0, 0)
+  // parseHHMMToMinutes range-checks hours/minutes — the Date constructor would
+  // otherwise roll values like "24:30" into the next day.
+  const mins = parseHHMMToMinutes(hhmm)
+  if (!dm || mins === null) return null
+  const d = new Date(Number(dm[1]), Number(dm[2]) - 1, Number(dm[3]), Math.floor(mins / 60), mins % 60, 0, 0)
   return Math.floor(d.getTime() / 1000)
 }
 
@@ -156,6 +160,18 @@ function startPruneTimer(): void {
   pruneTimer = setInterval(runPrune, PRUNE_INTERVAL_MS)
 }
 
+// --- periodic auto-backup ---
+//
+// runAutoBackup self-gates at 24h since the newest backup, so re-checking every
+// 6h is cheap and keeps a long-running tray instance backed up.
+const BACKUP_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
+let backupTimer: NodeJS.Timeout | null = null
+
+function startBackupTimer(): void {
+  if (backupTimer) clearInterval(backupTimer)
+  backupTimer = setInterval(() => void runAutoBackup(), BACKUP_CHECK_INTERVAL_MS)
+}
+
 // --- settings live-apply ---
 
 function scheduleFromSettings(s: Settings): ScheduleConfig {
@@ -167,9 +183,20 @@ function scheduleFromSettings(s: Settings): ScheduleConfig {
   if (closeMin === null) {
     console.warn(`[settings] workCloseHour "${s.workCloseHour}" invalid — using default ${DEFAULT_SCHEDULE.closeMinutes}m`)
   }
+  const start = startMin ?? DEFAULT_SCHEDULE.startMinutes
+  const close = closeMin ?? DEFAULT_SCHEDULE.closeMinutes
+  // Inverted schedules (close <= start) wedge the state machine: asleep until
+  // the "start" hour, then straight to closed/talking — capture never runs.
+  // The settings UI validates the pair, but the stored rows could predate that.
+  if (close <= start) {
+    console.warn(
+      `[settings] work hours inverted (start=${start}m close=${close}m) — using defaults`
+    )
+    return { ...DEFAULT_SCHEDULE, alertOffsetMinutes: s.preCloseAlertMinutes }
+  }
   return {
-    startMinutes: startMin ?? DEFAULT_SCHEDULE.startMinutes,
-    closeMinutes: closeMin ?? DEFAULT_SCHEDULE.closeMinutes,
+    startMinutes: start,
+    closeMinutes: close,
     alertOffsetMinutes: s.preCloseAlertMinutes
   }
 }
@@ -181,7 +208,7 @@ function dayPolicyFromSettings(s: Settings): { trackWeekends: boolean; excludedD
   const excludedDates = s.excludedDates
     .split(/\r?\n/)
     .map((l) => l.trim())
-    .filter((l) => /^\d{4}-\d{2}-\d{2}$/.test(l))
+    .filter(isValidDateStr) // real calendar dates only — "2026-13-45" would silently never match
   return { trackWeekends: s.trackWeekends, excludedDates }
 }
 
@@ -205,12 +232,24 @@ interface SavedBounds {
   height?: number
 }
 
+/** Saved bounds are only trusted if they still intersect a connected display's
+ *  work area — a monitor unplugged since last run would otherwise restore the
+ *  window off-screen with no way to drag it back. */
+function boundsOnScreen(b: SavedBounds): boolean {
+  return screen.getAllDisplays().some((d) => {
+    const a = d.workArea
+    const w = b.width ?? 100
+    const h = b.height ?? 100
+    return b.x < a.x + a.width && b.x + w > a.x && b.y < a.y + a.height && b.y + h > a.y
+  })
+}
+
 function readBounds(key: string): SavedBounds | null {
   const raw = getSetting(key)
   if (!raw) return null
   try {
     const b = JSON.parse(raw) as SavedBounds
-    if (typeof b.x === 'number' && typeof b.y === 'number') return b
+    if (typeof b.x === 'number' && typeof b.y === 'number' && boundsOnScreen(b)) return b
   } catch {
     /* ignore malformed */
   }
@@ -356,8 +395,8 @@ const reviewCache = new Map<string, { blocks: CachedBlock[]; chatLog: ChatMessag
 // The state to deliver on open, satisfying the renderer whether it asks before
 // or after we're ready (handles the open/summarize race).
 let pendingState: ReviewState | null = null
-// The original proposal JSON, stored on each saved row as provenance.
-let lastSummaryRaw: string | null = null
+// The original proposal JSON per date, stored on each saved row as provenance.
+const lastSummaryRawByDate = new Map<string, string | null>()
 // Which date the review panel is currently reviewing. Set by beginReview() and
 // consumed by review:save, review:summarize, and the cache-clear on Discard.
 // null when no review panel is open.
@@ -411,7 +450,18 @@ function samplesForDate(dateStr: string): ReturnType<typeof getSamplesSince> {
   // Inclusive lower bound, exclusive upper bound — same shape as the today
   // path, with the day's end pinned to midnight+86400 rather than "now".
   const end = start + 86400
-  return getSamplesSince(start).filter((s) => s.startTs < end)
+  // Fetch back one max-session span so a sample that STARTED before midnight
+  // but ran into this day is included, then clamp every sample to the day's
+  // bounds — midnight-spanning time is attributed to the day it occurred in
+  // instead of wholly to the start day.
+  return getSamplesSince(start - MAX_SESSION_S)
+    .filter((s) => s.endTs > start && s.startTs < end)
+    .map((s) => {
+      const startTs = Math.max(s.startTs, start)
+      const endTs = Math.min(s.endTs, end)
+      return { ...s, startTs, endTs, durationS: endTs - startTs }
+    })
+    .filter((s) => s.durationS > 0)
 }
 
 async function runSummaryForDate(dateStr: string): Promise<ReviewResult> {
@@ -420,7 +470,7 @@ async function runSummaryForDate(dateStr: string): Promise<ReviewResult> {
   // any error it falls back to the deterministic algorithmic grouping. `meta`
   // records which path ran (and whether it was a fallback) for the panel label.
   const { blocks, meta } = await summarizeDay(samples)
-  lastSummaryRaw = blocks.length > 0 ? JSON.stringify(blocks) : null
+  lastSummaryRawByDate.set(dateStr, blocks.length > 0 ? JSON.stringify(blocks) : null)
   return { ok: true, blocks, meta }
 }
 
@@ -513,6 +563,10 @@ async function beginReview(dateArg?: string, isAuto = false): Promise<void> {
     return
   }
 
+  // Today's in-flight tracker session isn't in the DB yet — flush it first so
+  // the last <=30 minutes of activity make it into the summary.
+  if (date === localDateStr()) flushBuffer()
+
   // No cache and no saved entries — see if there's any raw activity to
   // summarize. For past dates that have been pruned (or were never tracked)
   // we surface 'empty' rather than running an LLM on zero samples.
@@ -525,6 +579,13 @@ async function beginReview(dateArg?: string, isAuto = false): Promise<void> {
   }
 
   const result = await runSummaryForDate(date)
+  // A second beginReview may have started while this summarize was in flight;
+  // its state owns the panel now. Applying ours would show — and later save —
+  // one date's blocks under another date.
+  if (activeReviewDate !== date) {
+    console.log(`[review] stale summarize for ${date} discarded (panel now on ${activeReviewDate})`)
+    return
+  }
   // A usable result is always produced (AI, or the algorithmic fallback). Empty
   // blocks mean there was nothing meaningful to group (e.g. only sub-threshold
   // noise) — show the friendly empty state rather than a barren block list.
@@ -554,11 +615,11 @@ async function beginReview(dateArg?: string, isAuto = false): Promise<void> {
  *  cache is cleared only on Discard; on Save it stays so an immediate reopen
  *  shows the just-saved state from cache (a restart falls back to time_entries).
  *  Cache key is the date the panel was reviewing (not necessarily today). */
-function finishReview(clearCache: boolean): void {
-  const date = activeReviewDate ?? localDateStr()
+function finishReview(clearCache: boolean, dateArg?: string): void {
+  const date = dateArg ?? activeReviewDate ?? localDateStr()
   if (clearCache) reviewCache.delete(date)
   activeReviewDate = null
-  endReview()
+  endReview(date)
   if (chatWindow && !chatWindow.isDestroyed()) chatWindow.close()
 }
 
@@ -588,9 +649,11 @@ function createCompanionWindow(): BrowserWindow {
     skipTaskbar: true,
     alwaysOnTop: true,
     hasShadow: false,
+    // All six windows leave webPreferences at Electron's secure defaults
+    // (sandbox/contextIsolation on, nodeIntegration off); the preload only
+    // uses contextBridge + ipcRenderer, both available inside the sandbox.
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      preload: join(__dirname, '../preload/index.js')
     }
   })
 
@@ -636,7 +699,14 @@ function createChatWindow(): BrowserWindow {
     return chatWindow
   }
 
-  const { workArea } = screen.getPrimaryDisplay()
+  // Anchor to the display the companion actually lives on — the user may have
+  // dragged it to a secondary monitor; the primary display would open the
+  // panel on the wrong screen.
+  const display =
+    companionWindow && !companionWindow.isDestroyed()
+      ? screen.getDisplayMatching(companionWindow.getBounds())
+      : screen.getPrimaryDisplay()
+  const { workArea } = display
   const gap = 16
   const x = workArea.x + workArea.width - getSettings().companionWidth - SCREEN_MARGIN - CHAT_WIDTH - gap
   const y = workArea.y + workArea.height - CHAT_HEIGHT - SCREEN_MARGIN
@@ -654,8 +724,7 @@ function createChatWindow(): BrowserWindow {
     alwaysOnTop: true,
     hasShadow: false,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      preload: join(__dirname, '../preload/index.js')
     }
   })
 
@@ -701,8 +770,7 @@ function createSettingsWindow(): BrowserWindow {
     skipTaskbar: false,
     title: 'Companion Settings',
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      preload: join(__dirname, '../preload/index.js')
     }
   })
 
@@ -756,8 +824,7 @@ function createScratchpadWindow(): BrowserWindow {
     skipTaskbar: false,
     title: 'Scratchpad',
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      preload: join(__dirname, '../preload/index.js')
     }
   })
 
@@ -822,8 +889,7 @@ function createHistoryWindow(): BrowserWindow {
     skipTaskbar: false,
     title: 'History',
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      preload: join(__dirname, '../preload/index.js')
     }
   })
 
@@ -942,6 +1008,13 @@ async function backupNowViaDialog(): Promise<void> {
  *  talking. The scheduler callback below sees the flag and runs beginReview
  *  even if today is already saved. */
 function requestManualReview(): void {
+  // Already talking (e.g. the panel was closed via Alt+F4, so no save/discard
+  // reset the state): forceState('talking') is a same-state no-op and the
+  // scheduler callback never fires — open the review directly.
+  if (getCurrentState() === 'talking') {
+    void beginReview()
+    return
+  }
   manualReviewRequested = true
   forceState('talking')
 }
@@ -967,8 +1040,7 @@ function openReviewForDate(): void {
     skipTaskbar: false,
     title: 'Review a day',
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      preload: join(__dirname, '../preload/index.js')
     }
   })
   win.setMenuBarVisibility(false)
@@ -1067,7 +1139,22 @@ function checkMacPermissions(): void {
     })
 }
 
+// Single-instance guard: a second launch would run a second tracker against
+// the same SQLite DB — double-counted samples, duplicate reviews, and
+// node:sqlite SQLITE_BUSY errors on concurrent writes.
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    // The user tried to launch us again — surface the existing companion.
+    companionWindow?.show()
+    companionWindow?.focus()
+  })
+}
+
 app.whenReady().then(() => {
+  if (!gotSingleInstanceLock) return // quitting — don't initialise anything
   // Must match electron-builder.yml `appId` so Windows toast notifications and
   // taskbar grouping resolve to the installed shortcut.
   electronApp.setAppUserModelId('com.kokkinas.timetrackingbuddy')
@@ -1075,7 +1162,19 @@ app.whenReady().then(() => {
   // icon (the macOS analog of the windows' skipTaskbar:true). The tray menu and
   // the companion overlay remain; quit from the tray.
   if (process.platform === 'darwin') app.dock?.hide()
-  app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
+  app.on('browser-window-created', (_, window) => {
+    optimizer.watchWindowShortcuts(window)
+    // No window in this app legitimately opens child windows or navigates away
+    // from its bundled page — deny both, so a compromised renderer can't load
+    // remote content with the preload bridge attached.
+    window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    window.webContents.on('will-navigate', (event, url) => {
+      const devBase = process.env['ELECTRON_RENDERER_URL']
+      if ((devBase && url.startsWith(devBase)) || url.startsWith('file://')) return
+      event.preventDefault()
+      console.warn(`[security] blocked navigation to ${url}`)
+    })
+  })
 
   // Renderer toggles interactivity as the cursor moves on/off the sprite.
   ipcMain.on('companion:set-ignore-mouse', (_event, ignore: boolean) => {
@@ -1177,18 +1276,26 @@ app.whenReady().then(() => {
   )
 
   // Cache the panel's full state so reopening restores it without
-  // re-summarizing. Key by activeReviewDate so a past-day review caches under
-  // its own date, not under today.
-  ipcMain.on('review:update-cache', (_event, payload: { blocks: CachedBlock[]; chatLog: ChatMessage[] }) => {
-    const date = activeReviewDate ?? localDateStr()
-    reviewCache.set(date, { blocks: payload.blocks, chatLog: payload.chatLog })
-  })
+  // re-summarizing. The renderer names the date it is reviewing — main's
+  // activeReviewDate may already be null by the time the close-time
+  // beforeunload flush arrives.
+  ipcMain.on(
+    'review:update-cache',
+    (_event, payload: { date?: string; blocks: CachedBlock[]; chatLog: ChatMessage[] }) => {
+      const date =
+        payload.date && isValidDateStr(payload.date) ? payload.date : (activeReviewDate ?? localDateStr())
+      reviewCache.set(date, { blocks: payload.blocks, chatLog: payload.chatLog })
+    }
+  )
 
   // Persist to time_entries (atomic). Verbose logging + pre-validation.
   // On ANY failure: log it, return the reason, and DO NOT close the panel.
   // Writes to the active review date (not always today).
-  ipcMain.handle('review:save', (_event, payload: { blocks: DayBlock[] }): SaveResult => {
-    const date = activeReviewDate ?? localDateStr()
+  ipcMain.handle('review:save', (_event, payload: { date?: string; blocks: DayBlock[] }): SaveResult => {
+    // The renderer names the date it is saving — an overlapping beginReview
+    // can move activeReviewDate while this panel is still open.
+    const date =
+      payload.date && isValidDateStr(payload.date) ? payload.date : (activeReviewDate ?? localDateStr())
     const createdAt = nowSeconds()
     const blocks = payload.blocks
     console.log(`[review] save requested: ${blocks.length} block(s) for ${date}`)
@@ -1223,7 +1330,7 @@ app.whenReady().then(() => {
         label: b.label,
         ticketId: b.ticket && b.ticket.trim() ? b.ticket.trim() : null,
         notes: b.notes && b.notes.trim() ? b.notes : null,
-        rawSummary: lastSummaryRaw,
+        rawSummary: lastSummaryRawByDate.get(date) ?? null,
         createdAt
       }))
       replaceTimeEntries(date, rows)
@@ -1231,7 +1338,7 @@ app.whenReady().then(() => {
       console.log(
         `[review] saved ${rows.length} entries for ${date} (REPLACE); read-back: ${readBack} row(s) now exist for ${date}`
       )
-      finishReview(false) // keep the cache so an immediate reopen shows this state
+      finishReview(false, date) // keep the cache so an immediate reopen shows this state
       return { ok: true, count: rows.length }
     } catch (err) {
       console.error('[review] save FAILED with exception:', err)
@@ -1241,14 +1348,29 @@ app.whenReady().then(() => {
 
   // Discard: confirm happens in the renderer. Drops the in-session draft cache
   // but leaves time_entries untouched (a previously saved day stays saved).
-  ipcMain.on('review:discard', () => finishReview(true))
+  // The renderer names its date for the same race reason as review:save.
+  ipcMain.on('review:discard', (_event, payload?: { date?: string }) =>
+    finishReview(true, payload?.date && isValidDateStr(payload.date) ? payload.date : undefined)
+  )
 
   // --- settings IPC ---
 
   ipcMain.handle('settings:get', (): Settings => getSettings())
 
   // One field changed: persist it, then live-apply just that subsystem.
+  // Allowlist: the settings table also holds internal keys (window bounds,
+  // scratchpad text) that renderers must not be able to overwrite through
+  // this generic channel.
+  const settingsKeys = new Set(Object.keys(DEFAULT_SETTINGS))
   ipcMain.on('settings:update', (_event, payload: { key: string; value: string }) => {
+    if (
+      typeof payload?.key !== 'string' ||
+      typeof payload?.value !== 'string' ||
+      !settingsKeys.has(payload.key)
+    ) {
+      console.warn(`[settings] update rejected: unknown key "${String(payload?.key)}"`)
+      return
+    }
     updateSetting(payload.key, payload.value)
     applySettingChange(payload.key)
   })
@@ -1289,7 +1411,7 @@ app.whenReady().then(() => {
   // Pick-a-date entry point. Sets the manual flag so the talking transition
   // doesn't skip auto-open, then runs the parameterized review.
   ipcMain.on('review:open-date', (_event, payload: { date: string }) => {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(payload.date)) {
+    if (!isValidDateStr(payload.date)) {
       console.warn(`[review] open-date rejected: malformed "${payload.date}"`)
       return
     }
@@ -1325,10 +1447,53 @@ app.whenReady().then(() => {
     return runManualBackup(res.filePath)
   })
 
-  initDb()
+  // Write the History CSV to a user-chosen file. The renderer builds the CSV
+  // (it owns the loaded range); clipboard copy remains available separately.
+  ipcMain.handle(
+    'history:export-csv',
+    async (event, payload: { csv: string; suggestedName: string }): Promise<{ ok: boolean; path?: string; error?: string }> => {
+      const parent = BrowserWindow.fromWebContents(event.sender) ?? undefined
+      const dialogOpts = {
+        title: 'Export CSV',
+        defaultPath: payload.suggestedName,
+        filters: [{ name: 'CSV', extensions: ['csv'] }]
+      }
+      const res = parent
+        ? await dialog.showSaveDialog(parent, dialogOpts)
+        : await dialog.showSaveDialog(dialogOpts)
+      if (res.canceled || !res.filePath) return { ok: false, error: 'cancelled' }
+      try {
+        await fsp.writeFile(res.filePath, payload.csv, 'utf8')
+        return { ok: true, path: res.filePath }
+      } catch (err) {
+        console.error('[history] CSV export failed:', err)
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+  )
+
+  // A corrupt/unopenable DB must surface to the user and exit — an exception
+  // escaping whenReady() leaves a zombie process with no window and no tray.
+  try {
+    initDb()
+  } catch (err) {
+    console.error('[db] failed to open database:', err)
+    dialog.showErrorBox(
+      'Time-Tracking Buddy — database error',
+      `Could not open the database:\n${err instanceof Error ? err.message : String(err)}\n\n` +
+        'The file may be corrupt. Backups live in the "backups" folder inside the app data ' +
+        'directory — restore one over companion.db (with the app closed, and remove any ' +
+        'companion.db-wal / companion.db-shm files), then start the app again.'
+    )
+    app.quit()
+    return
+  }
   // Best-effort auto-backup. Runs in the background so a slow disk doesn't
   // block startup; failures are logged but never propagated to the user.
+  // The timer keeps a long-running tray instance backed up too — startup-only
+  // backups left an unbounded data-loss window.
   void runAutoBackup()
+  startBackupTimer()
   initSettings() // seed defaults on first run, load into cache
   void detectClaude() // probe the claude CLI once; cached for the Settings UI
   void detectOllama() // probe the Ollama host once; cached for the Settings UI
@@ -1429,9 +1594,17 @@ app.on('window-all-closed', () => {
   // Intentionally empty.
 })
 
-// On quit, stop the scheduler, flush the in-flight session, and close the DB.
+// On quit, stop the scheduler and flush the in-flight session while the DB is
+// still open. The DB itself must NOT close here: before-quit fires BEFORE the
+// windows close, and the renderers' beforeunload flushes (scratchpad text,
+// reflection saves, review-cache pushes) arrive as the windows go down.
 app.on('before-quit', () => {
   stopScheduler()
   stopTracker()
+})
+
+// will-quit fires after every window has closed, so the renderers' final IPC
+// writes have been processed — now the DB can close.
+app.on('will-quit', () => {
   closeDb()
 })

@@ -11,7 +11,8 @@ import {
   parseBlocks,
   parseRefine,
   type AiProvider,
-  type AiPrompt
+  type AiPrompt,
+  type SerializedInput
 } from './core'
 import { summarizeAlgorithmic } from './algorithmic'
 import { ollamaProvider, detectOllama, isOllamaAvailable } from './providers/ollama'
@@ -52,17 +53,13 @@ function logSummary(meta: SummaryMeta): void {
   console.log(meta.fellBack ? `${base} (fell back from ${meta.requested})` : base)
 }
 
-/** Run one AI provider end to end (serialize -> chat -> parse, with the single
+/** Run one AI provider end to end (chat -> parse, with the single
  *  stronger-instruction retry). Returns the blocks, or null on any failure
- *  (empty input, transport/auth/timeout error, or unparseable output) — every
- *  failure is logged and routes the caller to the algorithmic fallback. */
-async function runProvider(provider: AiProvider, samples: ActivitySample[]): Promise<DayBlock[] | null> {
-  const input = serializeSamples(samples)
-  if (input.kept === 0) {
-    console.warn('[ai] nothing to summarize (no sessions after filtering)')
-    return null
-  }
-
+ *  (transport/auth/timeout error, or unparseable output) — every failure is
+ *  logged and routes the caller to the algorithmic fallback. The caller
+ *  handles empty input BEFORE calling: an empty day is not a provider
+ *  failure and must not be reported as one. */
+async function runProvider(provider: AiProvider, input: SerializedInput): Promise<DayBlock[] | null> {
   let content = await provider.chat(buildSummarizePrompt(input, false))
   let blocks = content === null ? null : parseBlocks(content)
   if (blocks) return blocks
@@ -91,8 +88,19 @@ export async function summarizeDay(samples: ActivitySample[]): Promise<Summarize
     return { blocks: summarizeAlgorithmic(samples), meta }
   }
 
+  // Nothing survives the noise filter: there is nothing to send the provider,
+  // which is NOT a provider failure — fellBack stays false so the panel label
+  // doesn't blame a provider that was never contacted.
+  const input = serializeSamples(samples)
+  if (input.kept === 0) {
+    console.warn('[ai] nothing to summarize (no sessions after filtering)')
+    const meta: SummaryMeta = { method: 'algorithmic', fellBack: false, requested }
+    logSummary(meta)
+    return { blocks: summarizeAlgorithmic(samples), meta }
+  }
+
   // AI path.
-  const aiBlocks = await runProvider(provider, samples)
+  const aiBlocks = await runProvider(provider, input)
   if (aiBlocks) {
     const method = provider.name as 'ollama' | 'claude-code'
     const meta: SummaryMeta = { method, model: modelLabel(method), fellBack: false, requested }
@@ -137,13 +145,39 @@ export async function refineBlocks(message: string, current: DayBlock[]): Promis
   // the model responded but we couldn't parse an edit out of it (a 'parse' miss).
   if (!result) return { ok: false, error: content === null ? 'transport' : 'parse' }
 
-  const noteByKey = new Map<string, string>()
-  for (const b of current) {
-    if (b.notes) noteByKey.set(`${b.start}|${b.end}`, b.notes)
+  // Re-attach private notes. Exact start|end match first; for blocks whose
+  // times the model changed (the common refine case — merges, shifts), fall
+  // back to attaching each remaining note to the result block with the largest
+  // time overlap, so a time edit never silently destroys a note.
+  const minutes = (hhmm: string): number => {
+    const [h, m] = hhmm.split(':').map(Number)
+    return (h || 0) * 60 + (m || 0)
   }
-  for (const b of result.blocks) {
-    const note = noteByKey.get(`${b.start}|${b.end}`)
-    if (note) b.notes = note
+  const overlap = (a: DayBlock, b: DayBlock): number =>
+    Math.min(minutes(a.end), minutes(b.end)) - Math.max(minutes(a.start), minutes(b.start))
+
+  const matched = new Set<DayBlock>()
+  const unmatchedNotes: DayBlock[] = []
+  for (const orig of current) {
+    if (!orig.notes) continue
+    const exact = result.blocks.find((b) => !matched.has(b) && b.start === orig.start && b.end === orig.end)
+    if (exact) {
+      exact.notes = orig.notes
+      matched.add(exact)
+    } else {
+      unmatchedNotes.push(orig)
+    }
+  }
+  for (const orig of unmatchedNotes) {
+    const best = result.blocks
+      .filter((b) => !matched.has(b) && overlap(orig, b) > 0)
+      .sort((a, b) => overlap(orig, b) - overlap(orig, a))[0]
+    if (best) {
+      best.notes = best.notes ? `${best.notes}\n${orig.notes}` : orig.notes
+      matched.add(best)
+    } else {
+      console.warn(`[ai] refine: no overlapping block for note on ${orig.start}-${orig.end}; note dropped`)
+    }
   }
   return { ok: true, reply: result.reply, blocks: result.blocks }
 }

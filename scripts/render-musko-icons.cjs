@@ -27,7 +27,12 @@ const read = (p) => fs.readFileSync(path.join(SRC, p), 'utf8')
 
 const baseCss = read('styles.css')
 const muskoCss = read('avatars/musko/musko.css')
-const muskoSvgRaw = /export const \w+ = `([\s\S]*?)`/.exec(read('avatars/musko/musko.ts'))[1]
+const muskoMatch = /export const \w+ = `([\s\S]*?)`/.exec(read('avatars/musko/musko.ts'))
+if (!muskoMatch) {
+  console.error('[render] could not extract the SVG template literal from avatars/musko/musko.ts')
+  process.exit(2)
+}
+const muskoSvgRaw = muskoMatch[1]
 // Inject the avatar+state classes that companion.ts sets at runtime.
 const muskoSvg = muskoSvgRaw.replace('id="avatar"', 'id="avatar" class="avatar musko idle"')
 

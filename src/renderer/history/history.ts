@@ -210,6 +210,9 @@ async function load(): Promise<void> {
     render(range)
   } catch (err) {
     console.error('[history] load failed:', err)
+    // Drop the stale range — Export CSV would otherwise silently export the
+    // PREVIOUS range while the UI shows this error for the new one.
+    currentRange = null
     emptyEl.textContent = "Couldn't load history (see console)."
   }
 }
@@ -217,7 +220,11 @@ async function load(): Promise<void> {
 // --- CSV export ---
 
 function csvCell(s: string): string {
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  // Leading =, +, -, @ (or tab/CR) makes spreadsheet apps evaluate the cell as
+  // a formula — labels/tickets/notes originate from window titles and AI
+  // output, which are attacker-influenced. Prefix with ' to force text.
+  const defused = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s
+  return /[",\n]/.test(defused) ? `"${defused.replace(/"/g, '""')}"` : defused
 }
 
 function toCsv(range: HistoryRange): string {
@@ -244,16 +251,24 @@ function toCsv(range: HistoryRange): string {
 async function exportCsv(): Promise<void> {
   if (!currentRange) return
   const csv = toCsv(currentRange)
-  try {
-    await navigator.clipboard.writeText(csv)
-    const btn = byId<HTMLButtonElement>('exportCsv')
-    const old = btn.textContent
-    btn.textContent = 'Copied'
+  const btn = byId<HTMLButtonElement>('exportCsv')
+  const old = btn.textContent
+  const feedback = (label: string): void => {
+    btn.textContent = label
     setTimeout(() => {
       btn.textContent = old
-    }, 900)
+    }, 1500)
+  }
+  try {
+    const res = await window.api.historyExportCsv(
+      csv,
+      `time-entries-${currentRange.fromDate}-to-${currentRange.toDate}.csv`
+    )
+    if (res.ok) feedback('Saved')
+    else if (res.error !== 'cancelled') feedback('Failed (see console)')
   } catch (err) {
-    console.error('[history] clipboard write failed:', err)
+    console.error('[history] CSV export failed:', err)
+    feedback('Failed (see console)')
   }
 }
 

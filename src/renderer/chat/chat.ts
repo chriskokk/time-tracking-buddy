@@ -196,13 +196,23 @@ function toReviewBlocks(day: DayBlock[]): ReviewBlock[] {
 // --- cache push (renderer is source of truth; main persists) ---
 
 let pushTimer: ReturnType<typeof setTimeout> | null = null
+/** Set when the user confirms Discard: the close-time beforeunload flush must
+ *  NOT push the just-discarded draft back into main's cache. */
+let suppressCachePush = false
 
 function pushCacheNow(): void {
   if (pushTimer) {
     clearTimeout(pushTimer)
     pushTimer = null
   }
-  window.api.reviewUpdateCache({ blocks: blocks.map((b) => ({ ...b })), chatLog: chatHistory.slice() })
+  if (suppressCachePush) return
+  // The payload names this panel's date — main must not infer it from its own
+  // (possibly already-cleared) module state.
+  window.api.reviewUpdateCache({
+    date: reviewDate,
+    blocks: blocks.map((b) => ({ ...b })),
+    chatLog: chatHistory.slice()
+  })
 }
 
 /** Debounced push for rapid inline edits (keystrokes). */
@@ -324,6 +334,9 @@ function renderBlocks(): void {
       markEdited(b)
       refreshNoteGlyph()
       refreshProv()
+      // Debounced push like the other fields, so notes survive an external
+      // window close even without a blur.
+      schedulePush()
     })
     noteArea.addEventListener('blur', () => pushCacheNow())
 
@@ -413,6 +426,17 @@ function appendChat(role: 'you' | 'companion', text: string, transient = false):
   return m
 }
 
+/** Disable/enable the inline block editors (time/label/ticket/note inputs,
+ *  delete buttons). Used while a refine is in flight — the AI response replaces
+ *  the whole block list, so any edit made meanwhile would be silently clobbered. */
+function setBlocksEnabled(enabled: boolean): void {
+  blocksEl.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement>(
+    'input, textarea, button'
+  ).forEach((el) => {
+    el.disabled = !enabled
+  })
+}
+
 async function send(): Promise<void> {
   if (refining) return
   if (activeProvider === 'none') return // chat refine is disabled without an LLM
@@ -424,8 +448,11 @@ async function send(): Promise<void> {
   input.value = ''
 
   refining = true
-  input.disabled = true
-  byId<HTMLButtonElement>('send').disabled = true
+  // Freeze the whole editing surface, not just the chat input: the response
+  // replaces `blocks` wholesale, so concurrent inline edits / Add / Delete /
+  // Save would either be lost or persist a state the AI is about to replace.
+  setControlsEnabled(false)
+  setBlocksEnabled(false)
   byId('refineSpinner').classList.add('show')
   const pending = appendChat('companion', 'thinking...', true)
   pending.classList.add('pending')
@@ -449,8 +476,8 @@ async function send(): Promise<void> {
     pushCacheNow()
   } finally {
     refining = false
-    input.disabled = false
-    byId<HTMLButtonElement>('send').disabled = false
+    setControlsEnabled(true)
+    setBlocksEnabled(true)
     byId('refineSpinner').classList.remove('show') // ALWAYS clears, even on throw
     input.focus()
   }
@@ -462,7 +489,7 @@ async function save(): Promise<void> {
   // Clear any prior error banner before retrying.
   if (byId('status').classList.contains('error')) clearStatus()
   try {
-    const res = await window.api.reviewSave(clean())
+    const res = await window.api.reviewSave(reviewDate, clean())
     if (!res.ok) {
       showErrorBanner(`Save failed: ${res.error ?? 'unknown error'}`, false)
       btn.disabled = false
@@ -478,14 +505,21 @@ async function save(): Promise<void> {
 function discard(): void {
   // Saved state survives a discard, so the wording is scoped to this session.
   if (window.confirm('Discard your changes since the last save?')) {
-    window.api.reviewDiscard()
+    // Main clears the cache and closes this window; the close-time beforeunload
+    // flush must not push the discarded draft straight back into the cache.
+    suppressCachePush = true
+    window.api.reviewDiscard(reviewDate)
   }
 }
 
 // --- export ---
 
 function csvCell(s: string): string {
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  // Leading =, +, -, @ (or tab/CR) makes spreadsheet apps evaluate the cell as
+  // a formula — and labels/tickets here originate from window titles and AI
+  // output, which are attacker-influenced. Prefix with ' to force text.
+  const defused = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s
+  return /[",\n]/.test(defused) ? `"${defused.replace(/"/g, '""')}"` : defused
 }
 
 function toCsv(rows: CleanBlock[]): string {
@@ -505,12 +539,18 @@ function toText(rows: CleanBlock[]): string {
   return [...lines, `Total: ${fmtDur(total)}`].join('\n')
 }
 
+let flashTimer: ReturnType<typeof setTimeout> | null = null
+
 function flash(btn: HTMLButtonElement): void {
-  const old = btn.textContent
+  // Remember the real label once — on a rapid second click textContent may
+  // still read 'copied' from the in-flight flash.
+  if (btn.dataset.label === undefined) btn.dataset.label = btn.textContent ?? ''
+  if (flashTimer) clearTimeout(flashTimer)
   btn.textContent = 'copied'
   btn.classList.add('flash')
-  setTimeout(() => {
-    btn.textContent = old
+  flashTimer = setTimeout(() => {
+    flashTimer = null
+    btn.textContent = btn.dataset.label ?? ''
     btn.classList.remove('flash')
   }, 900)
 }
@@ -646,7 +686,8 @@ async function onReviewState(state: ReviewState): Promise<void> {
   // reviewing a past day.
   reviewDate = state.date
   lastErrorProvider = state.errorProvider
-  byId('title').textContent = `Today (${reviewDate})`
+  byId('title').textContent =
+    reviewDate === localDateStr() ? `Today (${reviewDate})` : `Reviewing ${reviewDate}`
   initReflection(reviewDate)
 
   blocks = state.blocks.map((b) => ({ ...b, ticket: b.ticket ?? '', notes: b.notes ?? '' }))
@@ -818,11 +859,20 @@ reflectText.addEventListener('blur', () => window.api.reflectionSave(reviewDate,
 /** Load the existing reflection for `date` into the textarea, auto-expand if
  *  present. Called by onReviewState once the date is known. */
 function initReflection(date: string): void {
-  window.api.reflectionGet(date).then((text) => {
-    reflectText.value = text
-    refreshReflectDot()
-    if (text.trim().length > 0) reflectionEl.classList.add('open')
-  })
+  window.api
+    .reflectionGet(date)
+    .then((text) => {
+      reflectText.value = text
+      refreshReflectDot()
+      if (text.trim().length > 0) reflectionEl.classList.add('open')
+    })
+    .catch((err) => {
+      // If the load failed we must NOT allow editing: a blur on the (empty)
+      // textarea would save "" over whatever reflection is actually stored.
+      console.error('[chat] reflection load failed:', err)
+      reflectText.disabled = true
+      reflectText.placeholder = 'Could not load the reflection (see console).'
+    })
 }
 
 // --- init ---
@@ -830,15 +880,18 @@ function initReflection(date: string): void {
 // Populate the ticket autocomplete from previously-used tickets.
 // One-shot at panel open; new tickets entered in this session won't appear
 // in the dropdown until the next open, which is fine for an offline DB.
-void window.api.ticketsList().then((tickets) => {
-  const datalist = byId('ticketSuggestions')
-  datalist.replaceChildren()
-  for (const t of tickets) {
-    const opt = document.createElement('option')
-    opt.value = t
-    datalist.append(opt)
-  }
-})
+window.api
+  .ticketsList()
+  .then((tickets) => {
+    const datalist = byId('ticketSuggestions')
+    datalist.replaceChildren()
+    for (const t of tickets) {
+      const opt = document.createElement('option')
+      opt.value = t
+      datalist.append(opt)
+    }
+  })
+  .catch((err) => console.error('[chat] ticket list load failed:', err)) // autocomplete only — safe to degrade
 
 // Flush the debounced cache push if the window closes before the timer
 // fires. Mirrors the scratchpad's beforeunload guard — without this, the

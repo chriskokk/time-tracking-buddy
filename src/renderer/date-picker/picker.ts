@@ -17,7 +17,9 @@ dateInput.max = localDateStr() // can't review the future
 
 function submit(): void {
   const v = dateInput.value
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+  // Enforce the future-date cap here too: the input's `max` only constrains the
+  // native picker UI — a typed value bypasses it and still reads back via .value.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || v > localDateStr()) {
     dateInput.focus()
     return
   }

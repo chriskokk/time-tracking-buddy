@@ -74,8 +74,9 @@ const api = {
   onReviewState: (cb: (state: ReviewState) => void): void => {
     ipcRenderer.on('review:state', (_event, state: ReviewState) => cb(state))
   },
-  /** Push the panel's full state up to main so it's cached for the next open. */
-  reviewUpdateCache: (payload: { blocks: CachedBlock[]; chatLog: ChatMessage[] }): void =>
+  /** Push the panel's full state up to main so it's cached for the next open.
+   *  The panel names the date it is reviewing — main must not infer it. */
+  reviewUpdateCache: (payload: { date: string; blocks: CachedBlock[]; chatLog: ChatMessage[] }): void =>
     ipcRenderer.send('review:update-cache', payload),
   /** Re-run the summary (the Retry button). */
   reviewSummarize: (): Promise<ReviewResult> => ipcRenderer.invoke('review:summarize'),
@@ -83,10 +84,10 @@ const api = {
   reviewRefine: (message: string, blocks: DayBlock[]): Promise<RefineResult> =>
     ipcRenderer.invoke('review:refine', { message, blocks }),
   /** Persist the blocks to time_entries; main closes the panel on success. */
-  reviewSave: (blocks: DayBlock[]): Promise<SaveResult> =>
-    ipcRenderer.invoke('review:save', { blocks }),
+  reviewSave: (date: string, blocks: DayBlock[]): Promise<SaveResult> =>
+    ipcRenderer.invoke('review:save', { date, blocks }),
   /** Discard the review: main closes the panel and exits talking. */
-  reviewDiscard: (): void => ipcRenderer.send('review:discard'),
+  reviewDiscard: (date: string): void => ipcRenderer.send('review:discard', { date }),
   /** Open the review panel for a specific date (past-day review). */
   reviewOpenDate: (date: string): void => ipcRenderer.send('review:open-date', { date }),
 
@@ -121,6 +122,9 @@ const api = {
   /** Load saved entries + reflections in [fromDate, toDate], with totals. */
   historyGet: (fromDate: string, toDate: string): Promise<HistoryRange> =>
     ipcRenderer.invoke('history:get', { fromDate, toDate }),
+  /** Save the rendered CSV to a user-chosen file (native Save dialog in main). */
+  historyExportCsv: (csv: string, suggestedName: string): Promise<{ ok: boolean; path?: string; error?: string }> =>
+    ipcRenderer.invoke('history:export-csv', { csv, suggestedName }),
 
   // --- backup ---
 

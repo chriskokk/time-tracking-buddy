@@ -51,6 +51,21 @@ CREATE TABLE IF NOT EXISTS daily_reflections (
 );
 `
 
+/** Bump when the schema changes shape (ALTER TABLE etc.). CREATE TABLE IF NOT
+ *  EXISTS only covers brand-new tables — existing tables need a migration step
+ *  keyed off the stored user_version. */
+const SCHEMA_VERSION = 1
+
+function migrate(db: DatabaseSync): void {
+  const row = db.prepare('PRAGMA user_version').get() as { user_version: number }
+  const from = row.user_version
+  if (from >= SCHEMA_VERSION) return
+  // Future migrations go here, gated per version:
+  //   if (from < 2) db.exec('ALTER TABLE ...')
+  db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
+  console.log(`[db] schema migrated ${from} -> ${SCHEMA_VERSION}`)
+}
+
 export function initDb(): void {
   if (database) return
   const file = join(app.getPath('userData'), 'companion.db')
@@ -58,6 +73,7 @@ export function initDb(): void {
   // WAL improves durability and lets reads not block on writes — cheap win.
   database.exec('PRAGMA journal_mode = WAL;')
   database.exec(SCHEMA)
+  migrate(database)
   console.log('[db] opened', file)
 }
 

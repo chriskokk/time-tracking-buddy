@@ -71,9 +71,15 @@ async function pruneOldBackups(): Promise<number> {
   return removed
 }
 
-/** Copy the DB to `dest`. Caller is responsible for any WAL checkpoint. */
+/** Copy the DB to `dest` atomically: copy to a `.tmp` sibling first, then
+ *  rename into place. A crash mid-copy leaves only the .tmp (which listBackups
+ *  ignores — wrong extension), never a truncated `companion-*.db` that would
+ *  count as "newest backup" and suppress the next auto-backup for 24h.
+ *  Caller is responsible for any WAL checkpoint. */
 async function copyDbTo(dest: string): Promise<void> {
-  await fs.copyFile(dbPath(), dest)
+  const tmp = `${dest}.tmp`
+  await fs.copyFile(dbPath(), tmp)
+  await fs.rename(tmp, dest)
 }
 
 /** Auto-backup on startup. No-op if a backup already exists within the last

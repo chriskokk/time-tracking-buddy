@@ -27,7 +27,11 @@ export function pickVoice(savedName: string): SpeechSynthesisVoice | null {
   return female ?? voices[0]
 }
 
-/** Run cb once the voice list is populated (getVoices() is async on first load). */
+/** Run cb once the voice list is populated (getVoices() is async on first load).
+ *  Falls back after a short timeout: on a system with zero TTS voices,
+ *  'voiceschanged' never fires and cb would otherwise never run — leaving the
+ *  settings voice picker permanently blank instead of showing its "no voices"
+ *  guidance. cb runs exactly once either way. */
 export function whenVoicesReady(cb: () => void): void {
   const s = synth()
   if (!s) {
@@ -38,11 +42,16 @@ export function whenVoicesReady(cb: () => void): void {
     cb()
     return
   }
-  const handler = (): void => {
+  let done = false
+  const fire = (): void => {
+    if (done) return
+    done = true
     s.removeEventListener('voiceschanged', handler)
     cb()
   }
+  const handler = (): void => fire()
   s.addEventListener('voiceschanged', handler)
+  setTimeout(fire, 2000)
 }
 
 export interface VoiceProfile {

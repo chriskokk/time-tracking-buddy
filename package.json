@@ -1,7 +1,7 @@
 {
   "name": "time-tracking-buddy",
   "productName": "Time-Tracking Buddy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Personal time-tracking desktop companion",
   "main": "./out/main/index.js",
   "author": "Christos Kokkinas",
@@ -28,6 +28,6 @@
     "vite": "^7.3.3"
   },
   "dependencies": {
-    "active-win": "^8.2.1"
+    "get-windows": "^9.3.0"
   }
 }
